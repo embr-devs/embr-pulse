@@ -10,3 +10,9 @@ healthCheck:
   enabled: true
   path: "/api/health"
   expectedStatusCode: 200
+
+database:
+  enabled: true
+  engine: postgres
+  framework: raw
+  schema: db/schema.sql
