@@ -1,7 +1,12 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { insertFeedback, listRecentFeedback } from "@/lib/feedback";
-import { createFeedbackIssue, attachIssueToFeedback } from "@/lib/github";
+import {
+  createFeedbackIssue,
+  attachIssueToFeedback,
+  postTriageComment,
+  maybeAssignCopilot,
+} from "@/lib/github";
 import { triageFeedback } from "@/lib/triage";
 import { pool } from "@/lib/db";
 import { log } from "@/lib/log";
@@ -109,7 +114,7 @@ export async function POST(req: Request) {
   // via telemetry / status flag instead.
   let issue: { number: number; url: string } | null = null;
   try {
-    issue = await createFeedbackIssue({
+    const created = await createFeedbackIssue({
       feedbackId: row.id,
       title: row.title,
       body: row.body,
@@ -117,12 +122,28 @@ export async function POST(req: Request) {
       submitterName: row.submitterName,
       triage,
     });
-    if (issue) {
-      await attachIssueToFeedback(row.id, issue.number);
+    if (created) {
+      issue = { number: created.number, url: created.url };
+      await attachIssueToFeedback(row.id, created.number);
       log.info("feedback.issue_created", {
         feedbackId: row.id,
-        issueNumber: issue.number,
+        issueNumber: created.number,
         triageEnriched: triage !== null,
+      });
+
+      // Post triage analysis as a separate comment so the issue body stays
+      // user-authored. Best-effort — failure is logged inside.
+      if (triage) {
+        await postTriageComment(row.id, created.number, triage);
+      }
+
+      // Auto-route confident, non-duplicate issues to GitHub Copilot.
+      const routing = await maybeAssignCopilot(row.id, created, triage);
+      log.info("feedback.copilot_routing", {
+        feedbackId: row.id,
+        issueNumber: created.number,
+        assigned: routing.assigned,
+        reason: routing.reason,
       });
     }
   } catch (err) {
