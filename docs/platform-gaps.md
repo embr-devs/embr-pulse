@@ -98,7 +98,17 @@ Each gap should capture:
 
 ---
 
-## Phase 5 Triage
+### G-008 · `embr dbs connect` doesn't actually inject `DATABASE_URL` at runtime
+
+- **Gap**: The CLI subcommand presents itself as injecting a `DATABASE_URL` env var (and the design doc's external-DB path assumes it). Reality: after `embr dbs connect`, `embr variables list` shows no new var, and `process.env.DATABASE_URL` is undefined inside the running container. To make the app actually reach the external DB you must `embr variables set DATABASE_URL '<conn-string>' --secret` separately *and* trigger a redeploy (env-var changes don't auto-roll the active deploy).
+- **Where encountered**: Phase 1, after the redeploy that landed the `/api/ready` endpoint — the probe returned `503 DATABASE_URL is not set` even though `embr dbs list` showed the connection.
+- **Workaround**: Set `DATABASE_URL` manually as a `--secret` variable, then `embr deployments trigger --commit <same sha>` to redeploy.
+- **Impact**: **MED** — Silent data plane disconnect. Liveness probes pass, the app appears up, but every DB query fails. An agent automating this end-to-end would not catch the gap unless it specifically wrote a readiness probe and watched the failure mode.
+- **Proposed primitive**:
+  1. `embr dbs connect` should auto-inject `DATABASE_URL` (and surface it in `variables list`, even if the value is masked) — and auto-trigger a redeploy or print a clear "you must redeploy for this to take effect" hint.
+  2. Document explicitly which env vars the platform manages on the user's behalf — right now there's no list.
+  3. Setting any variable should optionally trigger a rolling redeploy (`--apply` flag) — current behavior of "set it but require manual redeploy" is footgun-y.
+- **Filed as**: TBD (Phase 5).
 
 When we hit Phase 5, we'll:
 
