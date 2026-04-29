@@ -18,6 +18,8 @@
 // FOUNDRY_MODEL_DEPLOYMENT is unset, this is a no-op and we return null. The
 // feedback row + GitHub issue still flow through unenriched.
 
+import { log } from "@/lib/log";
+
 const SYSTEM_PROMPT = `You are the triage agent for embr-pulse, an internal-team feedback aggregator.
 
 Each input is one feedback submission with: title, body, category, submitterName, recentIssues (JSON array of {number, title, state}).
@@ -136,14 +138,26 @@ function normalize(r: TriageResult): TriageResult {
 export async function triageFeedback(
   input: TriageInput,
   timeoutMs = 15_000,
+  feedbackId?: string,
 ): Promise<TriageResult | null> {
   const cfg = getConfig();
-  if (!cfg) return null;
+  if (!cfg) {
+    log.info("triage.skipped", { feedbackId, reason: "foundry_not_configured" });
+    return null;
+  }
 
   const url = `${resourceRoot(cfg.endpoint)}/openai/deployments/${encodeURIComponent(cfg.deployment)}/chat/completions?api-version=${cfg.apiVersion}`;
 
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
+
+  const startedAt = Date.now();
+  log.info("triage.start", {
+    feedbackId,
+    deployment: cfg.deployment,
+    bodyLen: input.body.length,
+    recentIssueCount: input.recentIssues.length,
+  });
 
   try {
     const res = await fetch(url, {
@@ -165,16 +179,22 @@ export async function triageFeedback(
 
     if (!res.ok) {
       const text = await res.text().catch(() => "");
-      console.error(`[triage] foundry chat completion failed: ${res.status} ${text.slice(0, 300)}`);
+      log.error("triage.http_error", {
+        feedbackId,
+        status: res.status,
+        elapsedMs: Date.now() - startedAt,
+        body: text.slice(0, 300),
+      });
       return null;
     }
 
     const json = (await res.json()) as {
       choices?: Array<{ message?: { content?: string } }>;
+      usage?: { prompt_tokens?: number; completion_tokens?: number };
     };
     const content = json.choices?.[0]?.message?.content;
     if (!content) {
-      console.error("[triage] foundry response had no message content");
+      log.error("triage.no_content", { feedbackId, elapsedMs: Date.now() - startedAt });
       return null;
     }
 
@@ -182,21 +202,43 @@ export async function triageFeedback(
     try {
       parsed = JSON.parse(content);
     } catch (err) {
-      console.error("[triage] failed to JSON.parse model output:", err);
+      log.error("triage.parse_failed", {
+        feedbackId,
+        elapsedMs: Date.now() - startedAt,
+        message: (err as Error).message,
+      });
       return null;
     }
 
     if (!isTriageResult(parsed)) {
-      console.error("[triage] model output did not match TriageResult shape:", content.slice(0, 200));
+      log.error("triage.shape_mismatch", {
+        feedbackId,
+        elapsedMs: Date.now() - startedAt,
+        sample: content.slice(0, 200),
+      });
       return null;
     }
 
-    return normalize(parsed);
+    const result = normalize(parsed);
+    log.info("triage.success", {
+      feedbackId,
+      elapsedMs: Date.now() - startedAt,
+      confidence: result.confidence,
+      labelCount: result.suggestedLabels.length,
+      dedupeOf: result.dedupeOfIssueNumber,
+      promptTokens: json.usage?.prompt_tokens,
+      completionTokens: json.usage?.completion_tokens,
+    });
+    return result;
   } catch (err) {
     if ((err as { name?: string }).name === "AbortError") {
-      console.error(`[triage] foundry call timed out after ${timeoutMs}ms`);
+      log.error("triage.timeout", { feedbackId, elapsedMs: Date.now() - startedAt, timeoutMs });
     } else {
-      console.error("[triage] foundry call threw:", err);
+      log.error("triage.threw", {
+        feedbackId,
+        elapsedMs: Date.now() - startedAt,
+        message: (err as Error).message,
+      });
     }
     return null;
   } finally {

@@ -4,6 +4,7 @@ import { insertFeedback, listRecentFeedback } from "@/lib/feedback";
 import { createFeedbackIssue, attachIssueToFeedback } from "@/lib/github";
 import { triageFeedback } from "@/lib/triage";
 import { pool } from "@/lib/db";
+import { log } from "@/lib/log";
 
 export const dynamic = "force-dynamic";
 
@@ -45,6 +46,12 @@ export async function POST(req: Request) {
     body: parsed.data.body,
     category: parsed.data.category ?? null,
   });
+  log.info("feedback.created", {
+    feedbackId: row.id,
+    category: row.category,
+    titleLen: row.title.length,
+    bodyLen: row.body.length,
+  });
 
   // Best-effort triage. If Foundry isn't configured or the call fails,
   // triage is null and we open an unenriched issue. Pull the last 10
@@ -58,18 +65,21 @@ export async function POST(req: Request) {
         ORDER BY created_at DESC
         LIMIT 10`,
     );
-    triage = await triageFeedback({
-      title: row.title,
-      body: row.body,
-      category: row.category,
-      submitterName: row.submitterName,
-      recentIssues: recentRes.rows.map((r) => ({
-        number: r.github_issue_number,
-        title: r.title,
-        // Map our internal feedback status to issue-ish state for the prompt.
-        state: r.status === "shipped" || r.status === "declined" ? "closed" : "open",
-      })),
-    });
+    triage = await triageFeedback(
+      {
+        title: row.title,
+        body: row.body,
+        category: row.category,
+        submitterName: row.submitterName,
+        recentIssues: recentRes.rows.map((r) => ({
+          number: r.github_issue_number,
+          title: r.title,
+          state: r.status === "shipped" || r.status === "declined" ? "closed" : "open",
+        })),
+      },
+      15_000,
+      row.id,
+    );
     if (triage) {
       await pool.query(
         `UPDATE feedback
@@ -88,7 +98,10 @@ export async function POST(req: Request) {
       );
     }
   } catch (err) {
-    console.error("[feedback] triage failed:", err);
+    log.error("feedback.triage_orchestration_failed", {
+      feedbackId: row.id,
+      message: (err as Error).message,
+    });
   }
 
   // Best-effort GitHub issue creation. Never let a GH failure cause the API
@@ -106,9 +119,17 @@ export async function POST(req: Request) {
     });
     if (issue) {
       await attachIssueToFeedback(row.id, issue.number);
+      log.info("feedback.issue_created", {
+        feedbackId: row.id,
+        issueNumber: issue.number,
+        triageEnriched: triage !== null,
+      });
     }
   } catch (err) {
-    console.error("[feedback] github issue creation failed:", err);
+    log.error("feedback.issue_creation_failed", {
+      feedbackId: row.id,
+      message: (err as Error).message,
+    });
   }
 
   return NextResponse.json(
