@@ -57,6 +57,48 @@ These are explicitly **out of scope** for the coding agent (triage agent labels 
 
 The "killer demo" we're building toward: **user types feedback at 9:00 → triage agent files an issue at 9:01 → Copilot opens a PR at 9:05 → human merges at 9:30 → Embr auto-deploys at 9:32 → user reloads and sees their fix live.** Examples 1, 3, and 4 above are realistic candidates for that narrative.
 
+### Triage agent guardrails
+
+The Phase 3 Foundry agent is a **router and organizer, not a judge**. Its prompt MUST forbid value judgments about feedback merit. The agent does:
+
+- **Routing:** classify as `agent-fixable`, `needs-human`, `platform-request`, `duplicate`, or `low-confidence`.
+- **Structuring:** extract a clean summary, suggested labels, and (for `agent-fixable`) suspected files.
+- **Clustering:** detect near-duplicates against open issues and link them.
+- **Spam/empty filtering:** objective checks (length, gibberish patterns).
+
+The agent does NOT do:
+
+- Decide if an idea is "good", "bad", "important", or "trivial".
+- Estimate priority or business value.
+- Judge whether the submitter is being reasonable.
+
+**Why:** value judgments are a product/owner concern, and an agent that gatekeeps feedback (a) destroys trust the first time it's wrong about a senior engineer's suggestion, (b) inherits LLM biases about what "good software" looks like, and (c) reframes the demo from "AI helps" to "AI gatekeeps", which is a hostile pitch.
+
+The triage prompt will explicitly include a directive like:
+
+> You are a triage assistant. Your job is to ROUTE feedback, not to evaluate
+> its merit. Never include words like "good", "bad", "trivial", "important",
+> "low-priority", or any other quality judgment in your output. Only describe
+> what the feedback IS, not whether it's worth doing.
+
+Output schema is structured (JSON), so the agent can't sneak adjectives into a free-text field.
+
+### Human-in-the-loop policy
+
+Two human checkpoints by design — everything else is automated:
+
+| Stage | Automated? |
+|---|---|
+| Triage, classification, label, summary | ✅ Foundry agent |
+| Auto-assign Copilot to `agent-fixable` issues | ✅ Triage agent |
+| Copilot opens PR with tests | ✅ GitHub-native |
+| CI runs (build, lint, tests) | ✅ GitHub Actions |
+| **Code review + merge** | 🛑 **Human** |
+| Deploy after merge | ✅ Embr webhook |
+| Verify fix worked | ✅ Self-heal agent (Phase 4) |
+
+The merge button is non-negotiable. Reasons: (1) code review is the highest-leverage human task in the pipeline — it catches what tests miss; (2) it's the demo's punchline ("human clicks merge → Embr ships in 90 seconds"); (3) "we still gate at merge" is the answer to every CISO question when we evangelize this to enterprises.
+
 ## Proposed Solution
 
 ### Overview

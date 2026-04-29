@@ -110,6 +110,19 @@ Each gap should capture:
   3. Setting any variable should optionally trigger a rolling redeploy (`--apply` flag) — current behavior of "set it but require manual redeploy" is footgun-y.
 - **Filed as**: TBD (Phase 5).
 
+### G-009 · No first-class PR preview environments
+
+- **Gap**: When a Copilot coding agent (or any contributor) opens a PR against `seligj95/embr-pulse`, there is no built-in way to spin up an ephemeral Embr environment that tracks the PR branch, surface its URL on the PR, and tear it down on close/merge. The only options are (a) check out the PR locally and `npm run dev`, (b) manually `embr environments create -n pr-XX -b <branch>` and remember to delete it later, or (c) re-point a single shared "preview" env at the PR branch (assuming `environments update -b` works). Mature platforms (Vercel, Netlify, Render, Railway) all do this natively and a bot comments the preview URL on the PR.
+- **Where encountered**: Phase 2 prep — once GitHub Copilot starts opening PRs in response to triage-agent-filed issues, reviewers will need a live URL to click through the change. UI changes (the bulk of agent-fixable issues per the design doc's sample inventory) are exactly the case local dev fails on for sharing.
+- **Workaround**: Local `gh pr checkout && npm run dev`. Adequate for solo iteration, useless for sharing a link with a stakeholder or for the killer demo flow ("merge button → live URL updates").
+- **Impact**: **MED** — Doesn't block the demo, but blunts the "Embr is the agent-native PaaS" pitch. Vercel makes this trivial; if Embr can't, agent-driven workflows feel half-finished. Especially relevant for the Phase 3 narrative where Copilot opens many PRs that each want a click-to-verify URL.
+- **Proposed primitive**:
+  1. `embr environments create --pr <number>` — auto-detects the branch from the GitHub PR, creates an ephemeral env, attaches a webhook so the env is auto-deleted on PR close/merge.
+  2. A bot (Embr GitHub App) comments the preview URL on the PR after first successful deploy; updates the comment on subsequent deploys.
+  3. Per-PR env should optionally inherit from a "template environment" (env vars, DB connection) so you don't have to re-set every secret per PR.
+  4. CLI flag for cost guardrails: `--ttl 24h` auto-deletes after a window.
+- **Filed as**: TBD (Phase 5).
+
 When we hit Phase 5, we'll:
 
 1. Re-read every entry above.
