@@ -1,7 +1,9 @@
 "use client";
 
-import { useActionState } from "react";
+import { useActionState, useState } from "react";
 import { submitFeedbackAction, type SubmitFeedbackResult } from "./actions";
+
+const BODY_MAX = 4000;
 
 const inputStyle: React.CSSProperties = {
   width: "100%",
@@ -33,6 +35,7 @@ export function FeedbackForm() {
     SubmitFeedbackResult | null,
     FormData
   >(submitFeedbackAction, null);
+  const [bodyLength, setBodyLength] = useState(0);
 
   const errs =
     state && !state.ok
@@ -110,11 +113,22 @@ export function FeedbackForm() {
           name="body"
           required
           minLength={10}
-          maxLength={4000}
+          maxLength={BODY_MAX}
           rows={6}
           style={{ ...inputStyle, resize: "vertical", minHeight: 120 }}
           placeholder="What's the bug, what would you like, what are you trying to do…"
+          onChange={(e) => setBodyLength(e.target.value.length)}
         />
+        <div
+          style={{
+            fontSize: "0.78rem",
+            textAlign: "right",
+            marginTop: "0.25rem",
+            color: bodyLength >= BODY_MAX * 0.9 ? "#f87171" : "#8a93a0",
+          }}
+        >
+          {bodyLength} / {BODY_MAX}
+        </div>
         {errs.body && <div style={errStyle}>{errs.body[0]}</div>}
       </div>
 
