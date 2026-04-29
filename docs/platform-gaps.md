@@ -110,17 +110,34 @@ Each gap should capture:
   3. Setting any variable should optionally trigger a rolling redeploy (`--apply` flag) — current behavior of "set it but require manual redeploy" is footgun-y.
 - **Filed as**: TBD (Phase 5).
 
-### G-009 · No first-class PR preview environments
+### G-009 · PR preview environments work, but the feature is undocumented and undiscoverable
 
-- **Gap**: When a Copilot coding agent (or any contributor) opens a PR against `seligj95/embr-pulse`, there is no built-in way to spin up an ephemeral Embr environment that tracks the PR branch, surface its URL on the PR, and tear it down on close/merge. The only options are (a) check out the PR locally and `npm run dev`, (b) manually `embr environments create -n pr-XX -b <branch>` and remember to delete it later, or (c) re-point a single shared "preview" env at the PR branch (assuming `environments update -b` works). Mature platforms (Vercel, Netlify, Render, Railway) all do this natively and a bot comments the preview URL on the PR.
-- **Where encountered**: Phase 2 prep — once GitHub Copilot starts opening PRs in response to triage-agent-filed issues, reviewers will need a live URL to click through the change. UI changes (the bulk of agent-fixable issues per the design doc's sample inventory) are exactly the case local dev fails on for sharing.
-- **Workaround**: Local `gh pr checkout && npm run dev`. Adequate for solo iteration, useless for sharing a link with a stakeholder or for the killer demo flow ("merge button → live URL updates").
-- **Impact**: **MED** — Doesn't block the demo, but blunts the "Embr is the agent-native PaaS" pitch. Vercel makes this trivial; if Embr can't, agent-driven workflows feel half-finished. Especially relevant for the Phase 3 narrative where Copilot opens many PRs that each want a click-to-verify URL.
-- **Proposed primitive**:
-  1. `embr environments create --pr <number>` — auto-detects the branch from the GitHub PR, creates an ephemeral env, attaches a webhook so the env is auto-deleted on PR close/merge.
-  2. A bot (Embr GitHub App) comments the preview URL on the PR after first successful deploy; updates the comment on subsequent deploys.
-  3. Per-PR env should optionally inherit from a "template environment" (env vars, DB connection) so you don't have to re-set every secret per PR.
-  4. CLI flag for cost guardrails: `--ttl 24h` auto-deletes after a window.
+- **Gap**: Embr *does* support first-class PR preview environments — when GitHub Copilot opened a PR for our repo, the `embr-platform` bot automatically deployed `copilot/add-timestamp-to-feedback-cards` to a preview URL (`https://pr-copilot-add-timestamp-to-feedback-cards-2-embr-puls-00a00fb5.app.embr.azure`) and posted the URL as a PR comment with status, branch, commit, and revision metadata. **This is great.** The gap is purely documentation/discoverability: nothing in the embr CLI help, the embr-pulse onboarding flow, the GitHub App install README, or the design-time docs surfaces this. I (Copilot CLI agent) initially logged this as "missing feature" and proposed a CLI shape — embarrassingly wrong, because the platform already does it. If I missed it, real customers will too, which means the feature is undersold.
+- **Where encountered**: Phase 2 — opened a Copilot PR against issue #1, expected to need to spin up a preview env manually, was about to log "no PR previews" as a gap, then saw the bot comment on the merged PR and realized the platform already had the feature.
+- **Workaround**: None needed for the feature itself; the workaround is to *write down* that this exists somewhere a developer or agent will find it.
+- **Impact**: **MED** — Major positive surface area going to waste. "Embr ships every PR to a unique URL with zero config" is one of the strongest pitch points for an agent-managed PaaS (it's how Vercel beat Heroku) and it's currently a hidden Easter egg.
+- **Proposed fix** (not platform code, but platform docs/UX):
+  1. `embr environments list` should show preview envs alongside long-lived ones, with a `pr=` column linking to the PR.
+  2. `embr deployments list` should label PR-preview deploys explicitly so they're distinguishable from main-branch deploys at a glance.
+  3. Add a "PR Previews" section to the embr CLI README and to the top-level `embr --help` examples.
+  4. The bot comment is good; add a one-liner to the README of any `embr quickstart`-generated repo telling new devs "your PR will get a preview URL automatically."
+  5. (Possibly) docs on configurable TTL, opt-out per repo, and how preview envs share/don't share secrets and DBs with the parent environment — none of which I've verified yet.
+- **Filed as**: TBD (Phase 5).
+- **Open questions** (for follow-up Phase 5 investigation):
+  - Does the preview env share `GITHUB_TOKEN`, `GITHUB_WEBHOOK_SECRET`, and `DATABASE_URL` from the parent `production` env? If yes, that's a *security* concern (preview env from an untrusted PR could exfiltrate prod secrets); if no, the previewed app may not function (missing DB).
+  - When does the preview env get torn down? On PR close, on PR merge, or after a TTL? **Partial answer (see G-010)**: at least on merge, possibly tied to branch deletion, but the cleanup races with stray deploy events.
+  - Are preview envs counted against any quota?
+
+### G-010 · Embr posts an alarming "❌ Failed" deploy comment on a successfully-merged PR after the preview env is cleaned up
+
+- **Gap**: Sequence: (1) Copilot opens PR #2, (2) Embr creates preview env `env_79db0c0556f04e00b17049a900a00fb5` and posts "✅ Deployed" with the preview URL, (3) PR is merged, main deploys to prod successfully (rev 13), preview env is torn down, (4) the branch is deleted (manually), (5) Embr tries to deploy *something* to the now-deleted preview env, fails with `Environment 'env_79db...' not found in project 'prj_020bf32...'`, (6) the `embr-platform` bot posts a "❌ Failed" comment on the merged PR. Production is unaffected — the failure is on the dead preview env — but the failure comment makes a healthy merge look broken to anyone reading the PR thread later.
+- **Where encountered**: Phase 2 — first end-to-end test of the Copilot coding agent loop. We watched the agent open PR #2, Embr auto-deploy the preview, merge succeed, prod deploy succeed (Copilot's fix shipping at https://production-embr-pulse-e617a008.app.embr.azure shows "17m ago" relative timestamps), and then a "❌ Failed" comment appeared on the closed PR for an unrelated stray deploy.
+- **Workaround**: Ignore the failure comment. Verify production state out-of-band (via `embr deployments list` showing rev 13 active on the production env, or by hitting the live URL).
+- **Impact**: **MED** — Pure UX, no functional impact on production. But "did our deploy fail?" is a top-five thing engineers panic about, and a false-positive "Failed" comment burns trust in the platform's signaling fast. In a customer demo this is the kind of thing that gets pointed at and remembered.
+- **Proposed fix** (likely platform orchestration):
+  1. When a preview env is being torn down (PR close/merge), drain or cancel any in-flight or queued deploy events targeting that env BEFORE deleting it.
+  2. If a deploy event arrives for a deleted env, suppress the GitHub PR comment entirely (or at most, post an info-level "preview env already torn down" rather than a red ❌).
+  3. The bot's "Failed" comment template should distinguish *production* failures (alarming, real, actionable) from *preview* failures (often noise) — different colors, different language, possibly only post the latter when the PR is still open.
 - **Filed as**: TBD (Phase 5).
 
 When we hit Phase 5, we'll:
