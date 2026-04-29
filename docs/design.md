@@ -25,6 +25,38 @@ Without a tangible artifact, every conversation about "agent-managed PaaS" stays
 
 The scenario also has to be **demo-able to customers**. A self-referential read-only dashboard is a fun party trick; a feedback-driven app that *visibly closes the loop from a user's idea to a shipped change* is a story.
 
+## Scope & Audience
+
+This is intentionally a small, self-contained reference implementation. Locking the scope down up front:
+
+- **Audience:** internal Embr team only. No external customers, no EMU/cross-tenant auth, no public surface area beyond an Embr-hosted URL we share with teammates.
+- **Feedback content:** primarily *about embr-pulse itself* — UI nits, missing features, bugs, copy changes. This is what makes the agent loop close end-to-end (see below).
+- **Issue destination:** `seligj95/embr-pulse` (the app's own repo). Triage agent files issues there; Copilot coding agent fixes them there.
+- **Platform gaps go elsewhere:** anything we learn about *Embr the platform* is captured manually in `docs/platform-gaps.md` and ported by hand to `coreai-microsoft/embr` in Phase 5. The app does not auto-file against repos we don't own.
+
+**Why feedback is scoped to the app itself.** For the demo to land, the Copilot coding agent has to actually fix something — which means the issue must be in a repo it can write to *and* the fix must be in code we own. That's `seligj95/embr-pulse`. Generic "feedback inbox" framing would be more general but would break the closing of the loop, which is the whole point of issue #374.
+
+### Sample feedback inventory (what the coding agent can plausibly handle)
+
+These are concrete, scoped, in-codebase changes — Copilot's sweet spot:
+
+| Feedback | What the coding agent does |
+|---|---|
+| "The feed doesn't show when feedback was submitted." | Adds a timestamp render to `app/page.tsx`. ~10 lines, single file. |
+| "I can't filter the feed by category." | Extends the zod schema in `app/api/feedback/route.ts`, threads a `category` filter through `lib/feedback.ts`, adds a `<select>` in `app/page.tsx`. ~50 lines across 3 files. |
+| "Submit form lets me type 5000 chars but the API rejects it." | Adds `maxLength={2000}` + a live char counter in `app/submit/page.tsx`. |
+| "Rename status label `in-triage` → `reviewing`." | Display-only string changes; DB enum stays. |
+| "Open vs shipped count missing from the header." | Adds an aggregate query + small header chip. |
+
+These are explicitly **out of scope** for the coding agent (triage agent labels them `needs-human` or `platform-request`):
+
+- "Sign-in with my work account doesn't work" — MSAL/Entra config, requires secrets and Azure portal access the agent can't reach.
+- "Embr CLI is confusing" — platform feedback, not our codebase. Manually ported to `coreai-microsoft/embr` in Phase 5.
+- "DB connection drops at midnight" — infra tuning, not a code fix.
+- "Make the homepage 10x faster" — too vague for an agent; a human profiles first.
+
+The "killer demo" we're building toward: **user types feedback at 9:00 → triage agent files an issue at 9:01 → Copilot opens a PR at 9:05 → human merges at 9:30 → Embr auto-deploys at 9:32 → user reloads and sees their fix live.** Examples 1, 3, and 4 above are realistic candidates for that narrative.
+
 ## Proposed Solution
 
 ### Overview
