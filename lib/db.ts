@@ -18,5 +18,17 @@ function buildPool(): Pool {
   });
 }
 
-export const pool: Pool =
-  globalThis.__embrPulsePgPool ?? (globalThis.__embrPulsePgPool = buildPool());
+// Lazy proxy: defer pool creation until first use so Next's build-time page-
+// data collection (which loads modules but never queries) doesn't blow up when
+// DATABASE_URL is absent in the build environment.
+function getPool(): Pool {
+  return (globalThis.__embrPulsePgPool ??= buildPool());
+}
+
+export const pool: Pool = new Proxy({} as Pool, {
+  get(_target, prop) {
+    const real = getPool();
+    const value = Reflect.get(real, prop, real);
+    return typeof value === "function" ? value.bind(real) : value;
+  },
+}) as Pool;
