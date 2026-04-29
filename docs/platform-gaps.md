@@ -154,7 +154,7 @@ Each gap should capture:
   2. **"Inherit-from on preview create"**: a project setting like "PR previews should inherit env vars from environment X" — defaults to none, but lets a project owner say "previews get a *copy* of production's env vars at preview-create time." Snapshot semantics avoid the live-shared-DB trap.
   3. **Preview-specific overrides**: the project owner can declare a per-key rule: `DATABASE_URL` → "use this preview-DB connection string when running in a PR preview env"; `GITHUB_TOKEN` → "same as production"; etc. This is the Vercel/Netlify pattern and is the "right" answer.
   4. **Visible warning in the bot's preview comment**: "⚠️ This preview has 0 env vars inherited from production. If your app needs config, set it at project scope or use a preview-specific override." Today, you only learn the limitation when you click the URL and see a stack trace.
-- **Filed as**: TBD (Phase 5).
+- **Filed as**: [coreai-microsoft/embr#746](https://github.com/coreai-microsoft/embr/issues/746).
 - **Validation note (added 2026-04-29)**: We hit option (1) trap exactly during PR #4 testing — Copilot's char-counter PR opened a preview, the preview rendered with `Could not load feedback: DATABASE_URL is not set`, and to actually test it we promoted all 4 vars (DATABASE_URL, GITHUB_TOKEN, GITHUB_WEBHOOK_SECRET, APPLICATIONINSIGHTS_CONNECTION_STRING) from env-scope to project-scope. This unblocked the preview but **the preview now writes to the production DB**. Acceptable for our internal-team demo (we control all the input), but a real customer with this app would either: (a) be unable to test PR previews end-to-end, or (b) accidentally mutate prod from a preview env, possibly via untrusted PRs. Either failure mode is bad. This is exactly why the platform needs a primitive better than "all-or-nothing inheritance."
 
 ---
@@ -173,7 +173,7 @@ Each gap should capture:
   2. **Operator escape hatch**: `embr environments resync-active -e <env>` or similar — a no-cost CLI to re-derive the env's `activeDeploymentId` from the latest active deployment in that env.
   3. **The `activate` validation should be relaxed** when the env is pointing somewhere stale: if `env.activeDeploymentId != <target>` and `<target>.status == active`, the `activate` API should succeed (effectively repointing the env), not 400.
   4. **Visibility**: this state mismatch should surface as a warning on `embr environments get` (e.g., "⚠️ Env active deployment is superseded; prod is likely 404'ing"). Today nothing in the CLI output hints at it.
-- **Filed as**: TBD (Phase 5).
+- **Filed as**: [coreai-microsoft/embr#745](https://github.com/coreai-microsoft/embr/issues/745).
 
 ---
 
@@ -198,7 +198,7 @@ Each gap should capture:
   2. **Synthetic browser healthcheck**: Embr already does HTTP healthchecks; add a headless-browser hydration check (load `/`, wait for hydration marker, fail the deploy if it doesn't hydrate within N seconds). This is what would have prevented the "looks healthy, isn't" failure mode.
   3. **Surface chunk-load failures in deployment status**: if browser-side metrics (RUM via App Insights) show >5% of clients failing to load any chunk, the deployment should be flagged or auto-rolled-back.
   4. **CLI inspection**: `embr deployments verify <id>` that does a real browser load and reports asset load times — would let us catch this before promoting/announcing a deploy.
-- **Filed as**: TBD (Phase 5).
+- **Filed as**: [coreai-microsoft/embr#744](https://github.com/coreai-microsoft/embr/issues/744).
 
 When we hit Phase 5, we'll:
 2. Group duplicates and combine with anything new.
