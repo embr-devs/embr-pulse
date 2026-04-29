@@ -39,6 +39,13 @@ export interface FeedbackIssuePayload {
   body: string;
   category: string | null;
   submitterName: string;
+  /** Optional triage enrichment. When present, used to override title/labels and prepend a summary. */
+  triage?: {
+    suggestedTitle: string;
+    suggestedLabels: string[];
+    summary: string;
+    confidence: number;
+  } | null;
 }
 
 /** Sanitize a single line to safe markdown — strip control chars + truncate. */
@@ -51,6 +58,13 @@ function buildIssueBody(p: FeedbackIssuePayload): string {
   // Cap body at 8000 chars — well under GitHub's 65536 limit, leaves room for
   // metadata header.
   const body = p.body.length > 8000 ? `${p.body.slice(0, 8000)}…\n\n_(truncated)_` : p.body;
+  const summaryBlock = p.triage?.summary
+    ? [
+        `> **Triage summary** (confidence ${p.triage.confidence.toFixed(2)})`,
+        `> ${safeLine(p.triage.summary, 240)}`,
+        "",
+      ]
+    : [];
   return [
     `**Submitted via embr-pulse**`,
     `- Feedback ID: \`${p.feedbackId}\``,
@@ -59,6 +73,7 @@ function buildIssueBody(p: FeedbackIssuePayload): string {
     "",
     "---",
     "",
+    ...summaryBlock,
     body,
   ]
     .filter((line) => line !== null)
@@ -71,13 +86,28 @@ export async function createFeedbackIssue(
   const client = getClient();
   if (!client) return null;
 
-  const labels = ["pulse-feedback"];
-  if (payload.category) labels.push(`pulse-${safeLine(payload.category, 20)}`);
+  // Triage labels override the simple category-based labels when present.
+  const labels = payload.triage?.suggestedLabels?.length
+    ? payload.triage.suggestedLabels.slice(0, 4)
+    : (() => {
+        const base = ["pulse-feedback"];
+        if (payload.category) base.push(`pulse-${safeLine(payload.category, 20)}`);
+        return base;
+      })();
+
+  // Low-confidence triage → tag for human review before Copilot picks it up.
+  if (payload.triage && payload.triage.confidence < 0.5 && !labels.includes("needs-human-review")) {
+    labels.push("needs-human-review");
+  }
+
+  const title = payload.triage?.suggestedTitle?.trim()
+    ? safeLine(payload.triage.suggestedTitle, 140)
+    : safeLine(payload.title, 140);
 
   const res = await client.issues.create({
     owner: REPO_OWNER,
     repo: REPO_NAME,
-    title: safeLine(payload.title, 140),
+    title,
     body: buildIssueBody(payload),
     labels,
   });

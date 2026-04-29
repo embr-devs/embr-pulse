@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { insertFeedback, listRecentFeedback } from "@/lib/feedback";
 import { createFeedbackIssue, attachIssueToFeedback } from "@/lib/github";
+import { triageFeedback } from "@/lib/triage";
+import { pool } from "@/lib/db";
 
 export const dynamic = "force-dynamic";
 
@@ -44,6 +46,51 @@ export async function POST(req: Request) {
     category: parsed.data.category ?? null,
   });
 
+  // Best-effort triage. If Foundry isn't configured or the call fails,
+  // triage is null and we open an unenriched issue. Pull the last 10
+  // open/closed issues that already have a github_issue_number to give the
+  // model a small dedupe window.
+  let triage = null;
+  try {
+    const recentRes = await pool.query<{ github_issue_number: number; title: string; status: string }>(
+      `SELECT github_issue_number, title, status FROM feedback
+        WHERE github_issue_number IS NOT NULL
+        ORDER BY created_at DESC
+        LIMIT 10`,
+    );
+    triage = await triageFeedback({
+      title: row.title,
+      body: row.body,
+      category: row.category,
+      submitterName: row.submitterName,
+      recentIssues: recentRes.rows.map((r) => ({
+        number: r.github_issue_number,
+        title: r.title,
+        // Map our internal feedback status to issue-ish state for the prompt.
+        state: r.status === "shipped" || r.status === "declined" ? "closed" : "open",
+      })),
+    });
+    if (triage) {
+      await pool.query(
+        `UPDATE feedback
+           SET triage_summary = $2, triage_confidence = $3, updated_at = now()
+         WHERE id = $1`,
+        [row.id, triage.summary, triage.confidence],
+      );
+      await pool.query(
+        `INSERT INTO feedback_events (feedback_id, type, source, payload_json)
+         VALUES ($1, 'triaged', 'foundry', $2::jsonb)`,
+        [row.id, JSON.stringify({
+          confidence: triage.confidence,
+          labels: triage.suggestedLabels,
+          dedupeOf: triage.dedupeOfIssueNumber,
+        })],
+      );
+    }
+  } catch (err) {
+    console.error("[feedback] triage failed:", err);
+  }
+
   // Best-effort GitHub issue creation. Never let a GH failure cause the API
   // call to fail — the feedback is already stored and we'll surface the gap
   // via telemetry / status flag instead.
@@ -55,6 +102,7 @@ export async function POST(req: Request) {
       body: row.body,
       category: row.category,
       submitterName: row.submitterName,
+      triage,
     });
     if (issue) {
       await attachIssueToFeedback(row.id, issue.number);
@@ -68,6 +116,13 @@ export async function POST(req: Request) {
       id: row.id,
       status: row.status,
       githubIssue: issue,
+      triage: triage
+        ? {
+            confidence: triage.confidence,
+            labels: triage.suggestedLabels,
+            dedupeOfIssueNumber: triage.dedupeOfIssueNumber,
+          }
+        : null,
     },
     { status: 201 },
   );
