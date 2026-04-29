@@ -72,7 +72,17 @@ Each gap should capture:
 
 ## Live Gaps (populated as we build)
 
-*(empty — populate during Phases 1–4)*
+### G-006 · Transient `database_provision` failure with no auto-retry
+
+- **Gap**: Auto-deploy of commit `16c39d8` (adding `database:` block to `embr.yaml`) failed at the `database_provision` step with `Failed to install tunnel on DB sandbox 'c56d9b7b-fa7b-48ca-86fe-f90c637fb377'`. The build sandbox + clone + build all succeeded — only DB provisioning failed. Manually re-triggering the deploy at the same SHA succeeded.
+- **Where encountered**: Phase 1, second deploy of `seligj95/embr-pulse` after enabling internal Postgres in `embr.yaml`. Failed deployment: `dpl_04295731dd6f473cbb6480f9c6148805`.
+- **Workaround**: Manual `embr deployments trigger -p ... -e ... --commit 16c39d8`.
+- **Impact**: **MED** — In the agent-managed-app story this would manifest as: developer pushes, deploy fails, *no human is watching*, app never updates. The agent loop assumes pushes deploy successfully; a transient platform failure with no auto-retry breaks that assumption silently. For the Loop 2 demo, a feedback PR that fails to deploy would never flip its status to `shipped`, leaving the loop visibly broken.
+- **Proposed primitive**:
+  1. Auto-retry transient DB-provision failures (1–2x with backoff) before marking the deploy failed.
+  2. Surface a typed error code (`DB_TUNNEL_INSTALL_FAILED`) so the UI/CLI/agent can distinguish "transient infra" from "your code is broken" and react accordingly.
+  3. Emit a webhook or status-update event when a deploy fails so the app/agents can react (currently we only know by polling `embr status`).
+- **Filed as**: TBD (Phase 5).
 
 ---
 

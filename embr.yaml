@@ -11,8 +11,13 @@ healthCheck:
   path: "/api/health"
   expectedStatusCode: 200
 
-database:
-  enabled: true
-  engine: postgres
-  framework: raw
-  schema: db/schema.sql
+# NOTE: Embr-managed DB is temporarily disabled — platform's DB tunnel install
+# is failing in our region (see docs/platform-gaps.md G-006). Using an external
+# Azure Postgres Flexible Server connected via `embr dbs connect` until
+# platform team unblocks. To re-enable later, restore this block:
+#
+# database:
+#   enabled: true
+#   engine: postgres
+#   framework: raw
+#   schema: db/schema.sql
