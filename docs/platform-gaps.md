@@ -84,6 +84,18 @@ Each gap should capture:
   3. Emit a webhook or status-update event when a deploy fails so the app/agents can react (currently we only know by polling `embr status`).
 - **Filed as**: TBD (Phase 5).
 
+### G-007 · No graceful "use external DB while managed DB is broken" path
+
+- **Gap**: When G-006 hit, falling back to an external DB took five manual steps the platform could simplify: (1) `az postgres flexible-server create`, (2) firewall rule for Azure services, (3) allowlist `pgcrypto` via `azure.extensions` server parameter, (4) apply schema manually, (5) `embr dbs connect`. Plus you have to comment out the `database:` block in `embr.yaml` or future deploys keep retrying the broken managed-DB provision. There's no `embr dbs adopt` or a flag like `database.fallbackToExternal` that says "if managed provision fails, use this external connection automatically." Also: `embr dbs connect` doesn't apply schema for you the way `framework: raw + schema: db/schema.sql` does, even though Embr already knows that schema file path from `embr.yaml`.
+- **Where encountered**: Phase 1, recovering from G-006.
+- **Workaround**: All five manual steps above, plus this commit's removal of the `database:` block.
+- **Impact**: **MED** — Demoable but story-weakening. The agent-managed-app pitch is "Embr handles the boring parts." When the boring parts break, the *human* recovery path is multi-step and undocumented. An agent attempting auto-recovery here would have an even harder time.
+- **Proposed primitive**:
+  1. `embr dbs adopt --schema db/schema.sql ...` — connect external DB *and* apply schema in one command.
+  2. `database.fallback:` block in `embr.yaml` for declarative "use this connection if managed provision fails" — keeps source-of-truth in code, not in CLI flags.
+  3. EastUS Postgres Flexible Server SKU restriction is a separate but adjacent gap — Embr's quickstart doesn't tell you up front which regions support managed Postgres.
+- **Filed as**: TBD (Phase 5).
+
 ---
 
 ## Phase 5 Triage
