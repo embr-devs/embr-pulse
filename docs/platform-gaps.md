@@ -124,7 +124,7 @@ Each gap should capture:
   5. (Possibly) docs on configurable TTL, opt-out per repo, and how preview envs share/don't share secrets and DBs with the parent environment — none of which I've verified yet.
 - **Filed as**: TBD (Phase 5).
 - **Open questions** (for follow-up Phase 5 investigation):
-  - Does the preview env share `GITHUB_TOKEN`, `GITHUB_WEBHOOK_SECRET`, and `DATABASE_URL` from the parent `production` env? If yes, that's a *security* concern (preview env from an untrusted PR could exfiltrate prod secrets); if no, the previewed app may not function (missing DB).
+  - ~~Does the preview env share `GITHUB_TOKEN`, `GITHUB_WEBHOOK_SECRET`, and `DATABASE_URL` from the parent `production` env?~~ **Answered (see G-011): NO. Preview envs do NOT inherit env vars from the parent.** Good for security, brutal for usability.
   - When does the preview env get torn down? On PR close, on PR merge, or after a TTL? **Partial answer (see G-010)**: at least on merge, possibly tied to branch deletion, but the cleanup races with stray deploy events.
   - Are preview envs counted against any quota?
 
@@ -138,6 +138,22 @@ Each gap should capture:
   1. When a preview env is being torn down (PR close/merge), drain or cancel any in-flight or queued deploy events targeting that env BEFORE deleting it.
   2. If a deploy event arrives for a deleted env, suppress the GitHub PR comment entirely (or at most, post an info-level "preview env already torn down" rather than a red ❌).
   3. The bot's "Failed" comment template should distinguish *production* failures (alarming, real, actionable) from *preview* failures (often noise) — different colors, different language, possibly only post the latter when the PR is still open.
+- **Filed as**: TBD (Phase 5).
+
+### G-011 · PR previews don't see env-scoped variables, even though Embr's "preview from production" mental model implies they should
+
+- **Gap**: Embr supports two variable scopes — **project-level** (inherited by all environments, including PR previews) and **environment-level** (visible only to the specific env). PR preview environments inherit project-level vars but **not** env-level vars from the parent (e.g., `production`). When a developer runs `embr variables set DATABASE_URL ... -e env_prod...` (the natural CLI invocation when working in a single-env app), the var is scoped to `production` only. The PR preview boots without it and crashes on first config lookup. The user clicks the preview URL and sees their app's "missing config" error page (in our case: `Could not load feedback: DATABASE_URL is not set`). The mental model "preview is a copy of production with the PR's code on top" is wrong; preview is "an empty environment with the PR's code on top, plus whatever happens to be project-level."
+- **Where encountered**: Phase 2 — clicking the preview URL on Copilot's PR #4 (`copilot/add-live-character-counter`). The homepage failed because `DATABASE_URL` was set on the `production` env (via `embr variables set ... -e env_2c40970...`). All four of our app's vars (`DATABASE_URL`, `GITHUB_TOKEN`, `GITHUB_WEBHOOK_SECRET`, `APPLICATIONINSIGHTS_CONNECTION_STRING`) were env-scoped, so 0 of them reached the preview. Static-only pages (e.g., `/submit`) still rendered, but the actual product (the feed at `/`) was inaccessible.
+- **Workaround**: Move vars to project-level scope (`embr variables set ... ` without `-e`). For our demo this is OK because we're single-env. For real apps, it's a tradeoff: project-level vars are shared across `production`, `staging`, every PR preview, etc. — so `DATABASE_URL` at project level means **PR previews write to prod DB**, which is a worse problem than the original.
+- **Impact**: **HIGH** — Two failure modes:
+  1. **Devs scope to env** (most natural CLI default for single-env apps): previews are useless because they have no config.
+  2. **Devs scope to project** to fix #1: previews now share secrets and DBs with prod, which is the classic "preview-app-deletes-prod-data" trap.
+  Neither default is right. The platform needs a *third* option that today doesn't exist: per-env-class config inheritance.
+- **Proposed primitive** — graduated options, easy to hard:
+  1. **Better CLI defaults / docs**: when running `embr variables set`, prompt: "Make this available to PR previews? [Y/n]" — basically a UX nudge to think about scope. And in the dashboard, the Variables tab should explain *why* the toggle exists, not just show "Show inherited from project."
+  2. **"Inherit-from on preview create"**: a project setting like "PR previews should inherit env vars from environment X" — defaults to none, but lets a project owner say "previews get a *copy* of production's env vars at preview-create time." Snapshot semantics avoid the live-shared-DB trap.
+  3. **Preview-specific overrides**: the project owner can declare a per-key rule: `DATABASE_URL` → "use this preview-DB connection string when running in a PR preview env"; `GITHUB_TOKEN` → "same as production"; etc. This is the Vercel/Netlify pattern and is the "right" answer.
+  4. **Visible warning in the bot's preview comment**: "⚠️ This preview has 0 env vars inherited from production. If your app needs config, set it at project scope or use a preview-specific override." Today, you only learn the limitation when you click the URL and see a stack trace.
 - **Filed as**: TBD (Phase 5).
 
 When we hit Phase 5, we'll:
