@@ -1,5 +1,6 @@
 import type { CSSProperties } from "react";
 import type { FeedbackStatus } from "@/lib/feedback";
+import { formatRelativeTime } from "@/lib/time";
 
 export const colors = {
   bg: "#0b0d10",
@@ -50,21 +51,13 @@ export function StatusBadge({ status }: { status: FeedbackStatus }) {
 }
 
 export function TimeAgo({ date }: { date: Date }) {
-  const now = Date.now();
-  const then = date.getTime();
-  const seconds = Math.max(1, Math.floor((now - then) / 1000));
-  let text: string;
-  if (seconds < 60) text = `${seconds}s ago`;
-  else if (seconds < 3600) text = `${Math.floor(seconds / 60)}m ago`;
-  else if (seconds < 86_400) text = `${Math.floor(seconds / 3600)}h ago`;
-  else text = `${Math.floor(seconds / 86_400)}d ago`;
   return (
     <time
       dateTime={date.toISOString()}
       title={date.toISOString()}
       style={{ color: colors.muted, fontSize: "0.85rem" }}
     >
-      {text}
+      {formatRelativeTime(date)}
     </time>
   );
 }
