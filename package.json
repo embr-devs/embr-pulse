@@ -17,6 +17,7 @@
     "@azure/monitor-opentelemetry": "^1.9.1",
     "@octokit/auth-app": "^7.1.4",
     "@octokit/rest": "^21.1.1",
+    "@opentelemetry/api-logs": "^0.216.0",
     "next": "^15.5.15",
     "next-auth": "^5.0.0-beta.25",
     "pg": "^8.13.1",
