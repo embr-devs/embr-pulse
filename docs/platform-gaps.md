@@ -155,10 +155,9 @@ Each gap should capture:
   3. **Preview-specific overrides**: the project owner can declare a per-key rule: `DATABASE_URL` → "use this preview-DB connection string when running in a PR preview env"; `GITHUB_TOKEN` → "same as production"; etc. This is the Vercel/Netlify pattern and is the "right" answer.
   4. **Visible warning in the bot's preview comment**: "⚠️ This preview has 0 env vars inherited from production. If your app needs config, set it at project scope or use a preview-specific override." Today, you only learn the limitation when you click the URL and see a stack trace.
 - **Filed as**: TBD (Phase 5).
+- **Validation note (added 2026-04-29)**: We hit option (1) trap exactly during PR #4 testing — Copilot's char-counter PR opened a preview, the preview rendered with `Could not load feedback: DATABASE_URL is not set`, and to actually test it we promoted all 4 vars (DATABASE_URL, GITHUB_TOKEN, GITHUB_WEBHOOK_SECRET, APPLICATIONINSIGHTS_CONNECTION_STRING) from env-scope to project-scope. This unblocked the preview but **the preview now writes to the production DB**. Acceptable for our internal-team demo (we control all the input), but a real customer with this app would either: (a) be unable to test PR previews end-to-end, or (b) accidentally mutate prod from a preview env, possibly via untrusted PRs. Either failure mode is bad. This is exactly why the platform needs a primitive better than "all-or-nothing inheritance."
 
 When we hit Phase 5, we'll:
-
-1. Re-read every entry above.
 2. Group duplicates and combine with anything new.
 3. Pick the top 3+ HIGH/MED-impact gaps.
 4. File one GitHub issue against `coreai-microsoft/embr` per gap, linking back to the relevant section of `embr-pulse` (private repo — link to specific file:line snapshots in the issue body).
