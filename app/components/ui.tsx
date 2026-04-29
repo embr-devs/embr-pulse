@@ -3,25 +3,26 @@ import type { FeedbackStatus } from "@/lib/feedback";
 import { formatRelativeTime } from "@/lib/time";
 
 export const colors = {
-  bg: "#0b0d10",
-  card: "#11141a",
-  cardBorder: "#2a2f36",
-  text: "#e6e8eb",
-  muted: "#8a93a0",
-  accent: "#7aa2ff",
+  bg: "var(--color-bg)",
+  card: "var(--color-card)",
+  cardBorder: "var(--color-card-border)",
+  text: "var(--color-text)",
+  muted: "var(--color-muted)",
+  accent: "var(--color-accent)",
   success: "#4ade80",
   warn: "#fbbf24",
   danger: "#f87171",
 };
 
-const statusColor: Record<FeedbackStatus, string> = {
-  open: colors.muted,
-  "in-triage": colors.accent,
-  "needs-human-review": colors.warn,
-  "in-progress": colors.warn,
-  shipped: colors.success,
-  declined: colors.muted,
-  spam: colors.danger,
+// Hardcoded hex values for use in hex-alpha composites (e.g. `${hex}1a`)
+const statusHex: Record<FeedbackStatus, string> = {
+  open: "#8a93a0",
+  "in-triage": "#7aa2ff",
+  "needs-human-review": "#fbbf24",
+  "in-progress": "#fbbf24",
+  shipped: "#4ade80",
+  declined: "#8a93a0",
+  spam: "#f87171",
 };
 
 const statusLabel: Record<FeedbackStatus, string> = {
@@ -35,7 +36,7 @@ const statusLabel: Record<FeedbackStatus, string> = {
 };
 
 export function StatusBadge({ status }: { status: FeedbackStatus }) {
-  const c = statusColor[status];
+  const c = statusHex[status];
   const style: CSSProperties = {
     display: "inline-block",
     padding: "2px 8px",
