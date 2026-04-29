@@ -157,6 +157,49 @@ Each gap should capture:
 - **Filed as**: TBD (Phase 5).
 - **Validation note (added 2026-04-29)**: We hit option (1) trap exactly during PR #4 testing — Copilot's char-counter PR opened a preview, the preview rendered with `Could not load feedback: DATABASE_URL is not set`, and to actually test it we promoted all 4 vars (DATABASE_URL, GITHUB_TOKEN, GITHUB_WEBHOOK_SECRET, APPLICATIONINSIGHTS_CONNECTION_STRING) from env-scope to project-scope. This unblocked the preview but **the preview now writes to the production DB**. Acceptable for our internal-team demo (we control all the input), but a real customer with this app would either: (a) be unable to test PR previews end-to-end, or (b) accidentally mutate prod from a preview env, possibly via untrusted PRs. Either failure mode is bad. This is exactly why the platform needs a primitive better than "all-or-nothing inheritance."
 
+---
+
+### G-012 · `env.activeDeploymentId` can stay pinned to a superseded deployment, leaving prod 404'ing while platform reports "active"
+
+- **Gap**: Embr tracks "what's active" in two separate places that can disagree:
+  1. The **deployment** carries its own `status` (`building` → `provisioning` → `active` / `superseded` / `failed`).
+  2. The **environment** carries an `activeDeploymentId` that the gateway uses to route traffic.
+  When deploy N+1 transitions to `active`, the gateway flip-over (stop instances of N, set `env.activeDeploymentId = N+1`) is supposed to be atomic. We hit a state where rev 17 had `status: active` with a healthy running instance, but `env.activeDeploymentId` was still pointing at superseded rev 16, whose container had already been torn down. Result: every route returned `HTTP 404 {"error":"Not found"}` with `x-adc-response-details: platform` (so the 404 was from Embr's gateway, not our app — gateway was routing to a dead deployment ID). Recovery options were also broken: `embr deployments activate <new-deploy>` returned `400 ValidationFailed errorCode=18` (because the new deploy already considered itself active from its own perspective), and `embr deployments restore` returned the same. The only way out was to trigger yet another deploy.
+- **Where encountered**: Phase 2, immediately after PR #4 was merged. Sequence: rev 16 deployed cc11810 (Copilot's char-counter merge) and went active. Then rev 17 auto-deployed 3adeff7 (a doc-only commit) on top. Rev 17's own status flipped to `active`, instance was running, but `env.activeDeploymentId` never updated → all of prod returned 404 for ~10 minutes. Diagnosis required checking `embr environments list --json` against `embr deployments list --json` and noticing the ID mismatch.
+- **Workaround**: Trigger a fresh deploy (`embr deployments trigger -c <sha>`). Rev 18→19 cleanly took over and the env updated. This is a "throw a deploy at the platform until consistency returns" workaround — fine for a demo, terrible for a real outage.
+- **Impact**: **HIGH** — production-down with no usable recovery primitive. `activate` and `restore` both refuse to operate on a deploy that already says it's active. The `embr deployments` CLI surface has no "force-flip env to point at this deploy" or "resync env metadata" command. A customer hitting this would be stuck on hold support.
+- **Proposed primitive**:
+  1. **Self-heal**: when `env.activeDeploymentId` points at a superseded deployment, the platform should detect this on its next reconciliation tick and force-update to the actual newest active deployment. (This is a control-plane invariant: env active deployment must never be in `superseded` or `failed` state.)
+  2. **Operator escape hatch**: `embr environments resync-active -e <env>` or similar — a no-cost CLI to re-derive the env's `activeDeploymentId` from the latest active deployment in that env.
+  3. **The `activate` validation should be relaxed** when the env is pointing somewhere stale: if `env.activeDeploymentId != <target>` and `<target>.status == active`, the `activate` API should succeed (effectively repointing the env), not 400.
+  4. **Visibility**: this state mismatch should surface as a warning on `embr environments get` (e.g., "⚠️ Env active deployment is superseded; prod is likely 404'ing"). Today nothing in the CLI output hints at it.
+- **Filed as**: TBD (Phase 5).
+
+---
+
+### G-013 · Some `_next/static/chunks/*.js` requests hang indefinitely from browsers (but succeed via curl), preventing React hydration on a healthy "active" deploy
+
+- **Gap**: Immediately after rev 19 was reported `active` on prod, the homepage and `/submit` rendered correctly via SSR — HTML loaded, all forms visible — but the page never became interactive. Specifically:
+  - `<input>`/`<textarea>` had no `__reactFiber`/`__reactProps` keys (= React never hydrated).
+  - The character-counter from PR #4 stayed at `0 / 4000` regardless of typed input.
+  - The submit button fell back to native form POST (to `action=""`) which returned `HTTP 500`, so users saw "nothing happens" when clicking submit.
+  - Root cause: two specific JS chunks loaded by `<script async>` tags — the webpack runtime (`webpack-<hash>.js`) and the route bundle (`app/submit/page-<hash>.js`) — **hung forever** when fetched by the browser. Without webpack, no other chunks could link, so React never bootstrapped.
+  - Critically: the **same chunk URLs returned HTTP 200 in <100ms when fetched via `curl`**. The hang was browser-specific. Both Safari (in user's screenshot) and headless Chromium (Playwright reproduction) hit it. The other 5 chunks served by `<script async>` tags from the same HTML loaded fine.
+  - Fix-by-redeploy: triggering a no-op redeploy regenerated the chunks with new hashes (`page-921be1e4...` instead of `page-0d7de43e...`); after that, all chunks loaded in <300ms and hydration worked. So the issue is per-asset / per-deploy, not per-route.
+- **Where encountered**: Phase 2 — after Copilot's PR #4 (char counter) merged + rev 19 auto-deployed. User reported "the counter is not working and the share feedback button doesn't do anything." Initially looked like a code bug in `app/submit/FeedbackForm.tsx`, but the diff was clean (~16 lines, just `useState` + `onChange` + a counter `<div>`) and the same bug affected the homepage too. Playwright instrumentation showed those two specific chunks pending forever while curl served them instantly. Live example PR: https://github.com/seligj95/embr-pulse/pull/4.
+- **Workaround**: `embr deployments trigger -c <sha>` again to get fresh chunk hashes. There's no way for an app developer to debug or recover from this short of "redeploy and pray." Worse: Embr posts a green ✅ "Deployed" comment on the PR, so to anyone reading the PR thread the deploy looks healthy.
+- **Impact**: **HIGH** — silent prod outage where:
+  1. Healthchecks pass (`/api/health` is a server-rendered route, doesn't need hydration).
+  2. SSR HTML renders correctly, so static crawlers / monitors look healthy.
+  3. End-users see a page that *looks* fine but is non-interactive (counters frozen, buttons dead, navigation works only via plain `<a>` links). No visible error.
+  4. There's nothing in `embr deployments logs` or `embr deployments get` that hints at it. Runtime logs say "Runtime logs are not yet available."
+- **Proposed primitive**:
+  1. **Investigate the gateway/CDN race**: hash-named immutable assets shouldn't ever hang. Likely a race between blob upload completion and the proxy serving the asset URL, or an HTTP/2 stream-priority bug specific to `<link rel=preload>` + `<script async>` for the same hash.
+  2. **Synthetic browser healthcheck**: Embr already does HTTP healthchecks; add a headless-browser hydration check (load `/`, wait for hydration marker, fail the deploy if it doesn't hydrate within N seconds). This is what would have prevented the "looks healthy, isn't" failure mode.
+  3. **Surface chunk-load failures in deployment status**: if browser-side metrics (RUM via App Insights) show >5% of clients failing to load any chunk, the deployment should be flagged or auto-rolled-back.
+  4. **CLI inspection**: `embr deployments verify <id>` that does a real browser load and reports asset load times — would let us catch this before promoting/announcing a deploy.
+- **Filed as**: TBD (Phase 5).
+
 When we hit Phase 5, we'll:
 2. Group duplicates and combine with anything new.
 3. Pick the top 3+ HIGH/MED-impact gaps.
