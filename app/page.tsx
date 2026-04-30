@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { listRecentFeedback } from "@/lib/feedback";
 import { StatusBadge, TimeAgo, colors } from "./components/ui";
+import { ThemeToggle } from "./components/ThemeToggle";
 
 export const dynamic = "force-dynamic";
 
@@ -38,20 +39,23 @@ export default async function HomePage({ searchParams }: PageProps) {
             Team feedback, managed by agents on Embr.
           </p>
         </div>
-        <Link
-          href="/submit"
-          style={{
-            padding: "0.6rem 1rem",
-            background: colors.accent,
-            color: colors.bg,
-            fontWeight: 600,
-            borderRadius: 8,
-            textDecoration: "none",
-            fontSize: "0.9rem",
-          }}
-        >
-          + Share feedback
-        </Link>
+        <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+          <ThemeToggle />
+          <Link
+            href="/submit"
+            style={{
+              padding: "0.6rem 1rem",
+              background: colors.accent,
+              color: colors.bg,
+              fontWeight: 600,
+              borderRadius: 8,
+              textDecoration: "none",
+              fontSize: "0.9rem",
+            }}
+          >
+            + Share feedback
+          </Link>
+        </div>
       </header>
 
       {submitted && (
