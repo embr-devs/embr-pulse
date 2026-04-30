@@ -213,6 +213,24 @@ Each gap should capture:
   4. Extension: let `embr.yaml` declare additional resource-scope grants (e.g. "this app can read Cosmos account X") that Embr fulfills via role assignment.
 - **Filed as**: _(pending Phase 5 — this gap is concrete now that we hit it; will file with code links to `lib/signals.ts` once we have the signal seam shipped.)_
 
+### G-015 · React Server Action failures return opaque digest-only 500s with no way for the app developer to see the actual error
+
+- **Gap**: The `/submit` page used a Next.js 15 React Server Action (`submitFeedbackAction`) that called `insertFeedback()` then `revalidatePath("/")` then `redirect("/?submitted=1")`. In production, every form submission returned `HTTP 500` with the standard Next.js error overlay: *"Application error: a server-side exception has occurred. Digest: 3084417019@E80."* The same `insertFeedback()` call invoked through the sibling `/api/feedback` route returned `HTTP 201` and worked end-to-end (DB insert + Foundry triage + GH issue creation). The bug was specific to the server action runtime path.
+  - We had **zero visibility** into what threw. `embr deployments logs <id>` returns "Runtime logs are not yet available" (related to G-014 — App Insights signed-in but app can't push structured logs). `kubectl`-style pod log access isn't exposed. The only thing the developer sees is a digest hash.
+  - Reproducing locally would have required wiring the production Postgres to a dev box (which we can't, by design — the external DB is firewalled to the AKS subnet, G-007).
+  - We worked around it by **deleting the server action entirely** and rewriting the form as a client-side `fetch("/api/feedback")`. That fixed it instantly *and* surfaced an unrelated bonus bug: the server action only inserted a feedback row + redirected, while the API route runs the full pipeline (insert → triage → issue → Copilot routing). So every form submission since Phase 1 had been *silently* skipping triage and issue creation. We only noticed because the action started 500'ing for an unrelated reason.
+- **Where encountered**: Phase 4 (Loop 3 ship). After deploy `dpl_bbc2e868c1994ac2a2799832af63389f` (commit `50c35a9`), the form started 500'ing on every submission. Curl reproduction with the exact `Next-Action` header confirmed the action path was broken; curl POST to `/api/feedback` with the same payload succeeded. Fix shipped as commit `9ce6d74`.
+- **Workaround**: Two compounding workarounds:
+  1. Don't use React Server Actions on Embr — use Route Handlers (`app/api/*/route.ts`) instead. Route Handlers fail with normal HTTP semantics and let you `return Response.json({ error: ... }, { status: 500 })` so the client can surface the message.
+  2. Even with Route Handlers, you still can't see *server-side* throws — but at least you control what comes back to the client.
+- **Impact**: **HIGH** — this is the broader observability gap (G-014) showing up in a specific way. App developers on Embr cannot debug *any* server-side exception in production. Today the playbook is "redeploy and pray" or "rewrite the failing path until something works." That's not viable for real customer apps. Worse, Next.js 15 / React 19 push Server Actions as the recommended form-handling pattern, so any customer following Vercel-style guides on Embr will hit this same wall the first time something throws.
+- **Proposed primitive**:
+  1. **`embr deployments logs <id> --tail`** that actually streams stdout/stderr from the pod. This is the single biggest fix — even before workload identity (G-014) lands, just exposing the container's own logs would unblock 90% of debugging.
+  2. **Per-app App Insights with workload identity** (depends on G-014). Once apps can push their own structured logs, server action failures with stack traces would land in the app's `traces` table.
+  3. **CLI digest decoder**: when an Embr-hosted Next.js app returns a digest, expose `embr deployments decode-digest <id> <digest>` that maps the digest hash back to a stack trace by reading the source map from the deploy artifacts. (Next.js already writes the digest → error mapping to the pod's stderr; this just surfaces it.)
+  4. **Document the Server Actions caveat**: until the above ship, the docs should explicitly recommend Route Handlers over Server Actions for any error-prone path on Embr.
+- **Filed as**: [coreai-microsoft/embr#750](https://github.com/coreai-microsoft/embr/issues/750).
+
 ---
 
 When we hit Phase 5, we'll:
