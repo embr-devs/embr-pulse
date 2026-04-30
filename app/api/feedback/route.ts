@@ -10,6 +10,7 @@ import {
 import { triageFeedback } from "@/lib/triage";
 import { pool } from "@/lib/db";
 import { log } from "@/lib/log";
+import { recordSystemEvent } from "@/lib/signals";
 
 export const dynamic = "force-dynamic";
 
@@ -20,6 +21,18 @@ const FeedbackSchema = z.object({
   body: z.string().trim().min(10).max(4000),
   category: z.enum(["bug", "feature", "question", "other"]).nullable().optional(),
 });
+
+/**
+ * Synthetic failure injection for the Loop 3 demo path. Toggled by the
+ * EMBR_PULSE_SIMULATE_FAILURE env var. When on, ~20% of submissions return
+ * 500 *before* writing a feedback row, and we leave a system_events
+ * breadcrumb so the monitor agent's signal pack reflects it. Off in
+ * production by default.
+ */
+function maybeInjectSyntheticFailure(): boolean {
+  if (process.env.EMBR_PULSE_SIMULATE_FAILURE !== "true") return false;
+  return Math.random() < 0.2;
+}
 
 export async function GET(req: Request) {
   const url = new URL(req.url);
@@ -41,6 +54,26 @@ export async function POST(req: Request) {
     return NextResponse.json(
       { error: "Validation failed", fieldErrors: parsed.error.flatten().fieldErrors },
       { status: 400 },
+    );
+  }
+
+  // Loop 3 demo-only: synthetic 500 injection. Records a breadcrumb so the
+  // monitor agent's signal pack picks it up on the next cron tick.
+  if (maybeInjectSyntheticFailure()) {
+    await recordSystemEvent("synthetic_failure_injected", {
+      titleLen: parsed.data.title.length,
+      bodyLen: parsed.data.body.length,
+    }).catch((err: unknown) => {
+      log.error("feedback.synthetic_failure_persist_failed", {
+        message: (err as Error).message,
+      });
+    });
+    log.warn("feedback.synthetic_failure_returned", {
+      titleLen: parsed.data.title.length,
+    });
+    return NextResponse.json(
+      { error: "Internal server error (synthetic — Loop 3 demo)" },
+      { status: 500 },
     );
   }
 

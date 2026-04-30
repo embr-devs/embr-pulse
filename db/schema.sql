@@ -86,3 +86,15 @@ CREATE TABLE IF NOT EXISTS github_deliveries (
   event TEXT NOT NULL,
   received_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+
+-- System-level audit events (not tied to a single feedback row). Used by
+-- Loop 3 (self-heal) to assemble signal packs and to record monitor runs.
+CREATE TABLE IF NOT EXISTS system_events (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  type TEXT NOT NULL,
+  payload_json JSONB,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_system_events_type_created
+  ON system_events(type, created_at DESC);

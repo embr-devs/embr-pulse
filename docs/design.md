@@ -367,6 +367,8 @@ PR merge ≠ deploy success. The app determines `shipped` via:
 
 ### Telemetry & SLOs (Loop 3)
 
+> **v1 implementation note (2026-04):** App Insights API Keys are deprecated and we lack tenant permission to create a service principal for AAD-based access (gap **G-014**). v1 ships with **synthetic signals** assembled from local Postgres state — `feedback` rows, `feedback_events`, and a new `system_events` audit table. The signal-pack shape and the agent prompt are deliberately stable so swapping in real App Insights queries is a one-file change once Embr ships workload identity. See `lib/signals.ts` for the seam and `docs/embed-in-embr.md` for the migration story.
+
 Embr's existing Kusto tables alone do not give us app-level error signal. We add:
 
 - **App Insights SDK** in the Next.js app (Node), capturing: requests, dependencies (Postgres, Foundry, GitHub), exceptions, custom events for `feedback_submitted`, `triage_failed`, `issue_create_failed`, `webhook_processed`.
@@ -384,7 +386,9 @@ v1 SLOs (initial — tunable):
 
 The monitor agent runs a fixed set of KQL/SQL queries, packages results + recent deploys + sample traces into an `incidents` row, and creates a GitHub issue with the sanitized payload as the issue body.
 
-**Synthetic incident path** (for demos): a feature flag `EMBR_PULSE_SIMULATE_FAILURE=true` makes `POST /api/feedback` return 500 for 1% of requests, deliberately tripping the 5xx SLO. The demo flips this on, monitor detects within a cycle, opens an issue, and Copilot proposes the (trivial) fix of removing the flag.
+**Synthetic incident path** (for demos): a feature flag `EMBR_PULSE_SIMULATE_FAILURE=true` makes `POST /api/feedback` return 500 for ~20% of requests, deliberately tripping the 5xx SLO and emitting `synthetic_failure_injected` rows in `system_events`. The demo flips this on, the monitor cron (GH Actions, every 5 min) hits `/api/agents/monitor/run`, the Foundry monitor agent (`embr-pulse-monitor`) detects the spike and opens a `[INCIDENT]` issue with hypothesis + signal summary.
+
+**Cron shim**: `.github/workflows/monitor.yml` triggers the endpoint every 5 min via bearer token. This GH Actions schedule exists because `embr.yaml` has no `jobs:` field yet (gap G-001) — once it does, the cron moves on-platform.
 
 ### API Surface (v1)
 

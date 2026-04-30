@@ -200,6 +200,21 @@ Each gap should capture:
   4. **CLI inspection**: `embr deployments verify <id>` that does a real browser load and reports asset load times — would let us catch this before promoting/announcing a deploy.
 - **Filed as**: [coreai-microsoft/embr#744](https://github.com/coreai-microsoft/embr/issues/744).
 
+### G-014 · Embr-hosted apps cannot authenticate to Azure Monitor / App Insights without a self-managed service principal
+
+- **Gap**: An Embr-hosted application has no path to call Azure Monitor APIs (or any AAD-gated Azure API) using its *own* identity. Specifically: while building Loop 3 (self-heal), we needed the embr-pulse monitor agent to query App Insights for 5xx rates, latency p95s, and exception counts. App Insights API Keys are deprecated (retire March 2026) and AAD now requires a service principal or managed identity calling the `api.applicationinsights.io` resource. We have no way to create a service principal in the corporate tenant (lack of permissions), and Embr does not yet expose a workload identity per app, so neither path is available.
+- **Where encountered**: Loop 3 implementation. We had to fall back to **synthetic signals** — assembling a "signal pack" from the app's own Postgres state (feedback events + a `system_events` audit table) and calling the Foundry monitor agent on that. This works for the demo, but it's a strictly weaker signal than App Insights (which captures HTTP errors that never reach our DB writes, cold-start latency, etc.) and it's load-bearing for the customer story: a self-heal loop that can't actually read the platform's telemetry isn't really self-healing.
+- **Workaround**: In-app synthetic signal pack assembled from local Postgres. See `samples/embr-pulse/lib/signals.ts`. The seam is intentional: the agent prompt and signal-pack shape don't change, so when workload identity ships we swap one file (`signals.ts`) and the rest of Loop 3 keeps working unchanged.
+- **Impact**: **HIGH** — this is the single biggest unlock for "agents managing the app *on* Embr." Today, customers who want to do agent-driven self-heal must either (a) have permissions to create AAD service principals, or (b) pipe everything through their own observability backend. Embr should give every app a workload identity, and document the federated trust path to App Insights / Log Analytics / Cosmos / etc.
+- **Proposed primitive**:
+  1. Provision a **workload identity** for every Embr app (federated to AKS namespace's service account).
+  2. Auto-grant the identity **read access on the app's own App Insights** resource (we already provision App Insights per app).
+  3. Document the pattern (`@azure/identity` `DefaultAzureCredential`) in the docs site so apps can call any AAD-protected Azure API as themselves.
+  4. Extension: let `embr.yaml` declare additional resource-scope grants (e.g. "this app can read Cosmos account X") that Embr fulfills via role assignment.
+- **Filed as**: _(pending Phase 5 — this gap is concrete now that we hit it; will file with code links to `lib/signals.ts` once we have the signal seam shipped.)_
+
+---
+
 When we hit Phase 5, we'll:
 2. Group duplicates and combine with anything new.
 3. Pick the top 3+ HIGH/MED-impact gaps.

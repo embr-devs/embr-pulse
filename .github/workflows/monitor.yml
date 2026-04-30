@@ -1,0 +1,62 @@
+name: monitor
+
+# Loop 3 cron shim. Triggers the embr-pulse monitor endpoint every 5 minutes.
+#
+# This workflow exists because Embr does not yet have a first-class scheduled-
+# job primitive (gap G-001). Once embr.yaml grows a `jobs:` field, this can
+# be deleted in favor of running the schedule on Embr itself.
+#
+# Required repo secrets:
+#   MONITOR_TRIGGER_URL    — full URL of the Embr-hosted monitor endpoint
+#                            (e.g. https://production-embr-pulse-...app.embr.azure/api/agents/monitor/run)
+#   MONITOR_TRIGGER_SECRET — bearer token; must match the env var on Embr
+
+on:
+  schedule:
+    - cron: "*/5 * * * *"
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+concurrency:
+  group: monitor-run
+  cancel-in-progress: false
+
+jobs:
+  trigger:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Trigger monitor cycle
+        env:
+          URL: ${{ secrets.MONITOR_TRIGGER_URL }}
+          TOKEN: ${{ secrets.MONITOR_TRIGGER_SECRET }}
+        run: |
+          set -euo pipefail
+          if [ -z "$URL" ] || [ -z "$TOKEN" ]; then
+            echo "::warning::Missing MONITOR_TRIGGER_URL or MONITOR_TRIGGER_SECRET — skipping run."
+            exit 0
+          fi
+
+          response=$(curl -sS -m 30 \
+            -X POST "$URL" \
+            -H "Authorization: Bearer $TOKEN" \
+            -H "Content-Type: application/json" \
+            -w "\nHTTP_STATUS:%{http_code}\n") || {
+              echo "::error::curl invocation failed"
+              exit 1
+            }
+
+          echo "$response"
+
+          status=$(echo "$response" | grep -E '^HTTP_STATUS:' | tail -n1 | cut -d: -f2)
+          if [ "$status" != "200" ]; then
+            echo "::error::Monitor endpoint returned HTTP $status"
+            exit 1
+          fi
+
+          body=$(echo "$response" | sed -E 's/HTTP_STATUS:[0-9]+//g')
+          if echo "$body" | grep -q '"incidentDetected":true'; then
+            echo "::warning::Incident detected by monitor — see embr-pulse issues for details"
+          fi
