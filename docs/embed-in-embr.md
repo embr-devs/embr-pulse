@@ -1,5 +1,15 @@
 # Embed in Embr — What Would It Take to Make This First-Class?
 
+> **🔄 Position revised — see [`embragent-vision.md`](./embragent-vision.md).**
+>
+> This document originally argued that Embr should ship *samples only* and stay out of the agent runtime business. Building `embr-pulse` showed that ~88% of the code in any given agent is reusable platform plumbing (identity, retry, dedup, observability, audit) — not per-customer logic. That ratio makes the original "samples only" position too binary.
+>
+> The successor doc, [`embragent-vision.md`](./embragent-vision.md), proposes **EmbrAgent**: a managed agent runtime baked into Embr where customers parameterize templates declaratively in `embr.yaml`. The "platform primitives belong in Embr; agent application logic belongs in the customer's app" framing below remains correct — EmbrAgent simply formalizes *which* primitives belong in Embr and packages them as a runtime rather than leaving each customer to reinvent them.
+>
+> Read this doc for the per-component grading; read `embragent-vision.md` for the synthesis.
+
+---
+
 > Question 3 from [`design.md`](./design.md): *Where should the management agent live? Standalone (e.g. inside GitHub Actions) or first-class inside Embr (ADC)? What would each cost us to build?*
 >
 > This doc grades each piece of `embr-pulse` against "could (and should) Embr ship this as a built-in feature?"
