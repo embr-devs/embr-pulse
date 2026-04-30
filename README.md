@@ -15,17 +15,31 @@ The app's purpose is the agent loop. Building it surfaces what Embr needs to mak
 > - Loop 2 (feedback → ship): [issue #8 → PR #9 in ~25 minutes](docs/customer-story.md).
 > - Loop 3 (self-heal): [incident #139](https://github.com/seligj95/embr-pulse/issues/139) — Foundry monitor agent detected a synthetic triage-failure spike, filed a real incident issue with hypothesis + suggested action, and deduplicated subsequent triggers onto the same issue.
 
+## What we learned
+
+Building this surfaced **15 platform-friction points** and one architectural opinion worth surfacing up front:
+
+> **Don't make Embr "an agent platform." Make Embr the platform that agent-driven apps run on.**
+>
+> Triage prompts, monitor classifiers, and Copilot routing are per-customer code — they belong in the **app**.
+> Workload identity, scheduled jobs, deployment-lifecycle webhooks, and observability auto-wiring are per-platform — they belong in **Embr**.
+
+Full reasoning: [`docs/embed-in-embr.md`](docs/embed-in-embr.md).
+Upstream impact: 15 gaps lodged against `coreai-microsoft/embr` (11 new issues + 4 comments on existing tracking issues). Catalog: [`docs/platform-gaps.md`](docs/platform-gaps.md).
+
 ## Docs
 
-**Evangelism:**
+**Start here** (15-min read for anyone landing cold):
 - [`docs/customer-story.md`](docs/customer-story.md) — narrative pitch with real receipts (issue #8 → PR #9 in ~25 minutes)
+- [`docs/embed-in-embr.md`](docs/embed-in-embr.md) — standalone agent vs ADC-embedded: our recommendation and why
+
+**Customer-facing:**
 - [`docs/reference-architecture.md`](docs/reference-architecture.md) — what we built, distilled for customers who want to copy it
-- [`docs/embed-in-embr.md`](docs/embed-in-embr.md) — what Embr should ship to make this first-class
+- [`docs/demo-script.md`](docs/demo-script.md) — canonical happy-path demo we engineer toward
 
 **Engineering:**
 - [`docs/design.md`](docs/design.md) — full architecture and rationale
-- [`docs/demo-script.md`](docs/demo-script.md) — canonical happy-path demo we engineer toward
-- [`docs/platform-gaps.md`](docs/platform-gaps.md) — running log of Embr platform improvements we'd like to see
+- [`docs/platform-gaps.md`](docs/platform-gaps.md) — running log of Embr platform improvements (with filed-as links)
 
 ## Local development
 
