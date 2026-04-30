@@ -4,7 +4,7 @@ Captured during `embr-pulse` development. Each entry is friction we hit while bu
 
 This file is mined in **Phase 5** of the [design](./design.md) to file GitHub issues against `coreai-microsoft/embr` (issues only — we don't push code there).
 
-> Status: **All four phases shipped.** Loops 1–3 are operational on production. This file is now a steady-state list of platform improvements with concrete receipts behind each one. Currently 15 entries (G-001 → G-015); 4 filed (#744, #745, #746, #750), 11 ready to file.
+> Status: **All four phases shipped.** Loops 1–3 are operational on production. This file is now a steady-state list of platform improvements with concrete receipts behind each one. Currently 15 entries (G-001 → G-015). 11 filed as new issues (#744–#746, #750, #754–#760), 3 added as comments to existing tracking issues (#682, #692, #726). All gaps are now lodged upstream.
 
 ---
 
@@ -30,7 +30,7 @@ Each gap should capture:
 - **Workaround**: GitHub Actions cron calls an Embr-hosted endpoint. Works but the scheduler lives off-platform, weakening the "agents run on Embr" story.
 - **Impact**: **MED**. Functional but evangelism-weakening.
 - **Proposed primitive**: `embr.yaml` schedule field, e.g. `jobs: [{ name: monitor, schedule: "*/5 * * * *", endpoint: /api/agents/monitor/run }]`.
-- **Filed as**: TBD
+- **Filed as**: comment on existing [coreai-microsoft/embr#682](https://github.com/coreai-microsoft/embr/issues/682) (Workloads: Multiple workload types per environment).
 
 ### G-002 · Application-level managed identity for outbound Azure calls
 
@@ -39,7 +39,7 @@ Each gap should capture:
 - **Workaround**: Static API keys in Embr env vars. Manual rotation.
 - **Impact**: **HIGH**. Security posture and customer trust.
 - **Proposed primitive**: Each Embr app gets a managed identity (or federated credential) usable for Azure RBAC role assignments — one of the most common asks in real customer apps.
-- **Filed as**: TBD
+- **Filed as**: comment on existing [coreai-microsoft/embr#726](https://github.com/coreai-microsoft/embr/issues/726) (Runtime workload identity / federated MSI).
 
 ### G-003 · Programmatic deployment status / lifecycle webhook
 
@@ -48,7 +48,7 @@ Each gap should capture:
 - **Workaround**: Custom polling against Embr deployment endpoints + a startup-log boot signal.
 - **Impact**: **MED**. Every customer building an "agent-managed" app will hit this.
 - **Proposed primitive**: Embr emits a webhook (configurable target URL) on deployment lifecycle events: `building`, `deployed`, `failed`, `rolled_back`, with commit SHA + environment.
-- **Filed as**: TBD
+- **Filed as**: [coreai-microsoft/embr#758](https://github.com/coreai-microsoft/embr/issues/758).
 
 ### G-004 · Native feedback / comments primitive (or sample pattern)
 
@@ -57,7 +57,7 @@ Each gap should capture:
 - **Workaround**: Build it ourselves in `embr-pulse`.
 - **Impact**: **LOW**. Arguably out of scope for a PaaS, but a reusable sample pattern is high-leverage.
 - **Proposed primitive**: A reference implementation in Embr samples (`samples/embr-feedback-loop`) plus a documented "agent-managed app" template.
-- **Filed as**: TBD
+- **Filed as**: [coreai-microsoft/embr#760](https://github.com/coreai-microsoft/embr/issues/760).
 
 ### G-005 · Agent-identity pattern documentation
 
@@ -66,7 +66,7 @@ Each gap should capture:
 - **Workaround**: Per-system keys, manually wired up. Each customer will reinvent.
 - **Impact**: **HIGH** for evangelism. This is the "how do agents safely operate at scale" question.
 - **Proposed primitive**: A documented reference pattern: how an Embr-hosted service obtains short-lived tokens for GitHub (via App), Foundry (via Entra), and Kusto (via Entra/MI), with rotation guidance.
-- **Filed as**: TBD
+- **Filed as**: [coreai-microsoft/embr#759](https://github.com/coreai-microsoft/embr/issues/759).
 
 ---
 
@@ -82,7 +82,7 @@ Each gap should capture:
   1. Auto-retry transient DB-provision failures (1–2x with backoff) before marking the deploy failed.
   2. Surface a typed error code (`DB_TUNNEL_INSTALL_FAILED`) so the UI/CLI/agent can distinguish "transient infra" from "your code is broken" and react accordingly.
   3. Emit a webhook or status-update event when a deploy fails so the app/agents can react (currently we only know by polling `embr status`).
-- **Filed as**: TBD (Phase 5).
+- **Filed as**: [coreai-microsoft/embr#754](https://github.com/coreai-microsoft/embr/issues/754).
 
 ### G-007 · No graceful "use external DB while managed DB is broken" path
 
@@ -94,7 +94,7 @@ Each gap should capture:
   1. `embr dbs adopt --schema db/schema.sql ...` — connect external DB *and* apply schema in one command.
   2. `database.fallback:` block in `embr.yaml` for declarative "use this connection if managed provision fails" — keeps source-of-truth in code, not in CLI flags.
   3. EastUS Postgres Flexible Server SKU restriction is a separate but adjacent gap — Embr's quickstart doesn't tell you up front which regions support managed Postgres.
-- **Filed as**: TBD (Phase 5).
+- **Filed as**: comment on existing [coreai-microsoft/embr#692](https://github.com/coreai-microsoft/embr/issues/692) (Allow management of external databases).
 
 ---
 
@@ -108,7 +108,7 @@ Each gap should capture:
   1. `embr dbs connect` should auto-inject `DATABASE_URL` (and surface it in `variables list`, even if the value is masked) — and auto-trigger a redeploy or print a clear "you must redeploy for this to take effect" hint.
   2. Document explicitly which env vars the platform manages on the user's behalf — right now there's no list.
   3. Setting any variable should optionally trigger a rolling redeploy (`--apply` flag) — current behavior of "set it but require manual redeploy" is footgun-y.
-- **Filed as**: TBD (Phase 5).
+- **Filed as**: [coreai-microsoft/embr#755](https://github.com/coreai-microsoft/embr/issues/755).
 
 ### G-009 · PR preview environments work, but the feature is undocumented and undiscoverable
 
@@ -122,7 +122,7 @@ Each gap should capture:
   3. Add a "PR Previews" section to the embr CLI README and to the top-level `embr --help` examples.
   4. The bot comment is good; add a one-liner to the README of any `embr quickstart`-generated repo telling new devs "your PR will get a preview URL automatically."
   5. (Possibly) docs on configurable TTL, opt-out per repo, and how preview envs share/don't share secrets and DBs with the parent environment — none of which I've verified yet.
-- **Filed as**: TBD (Phase 5).
+- **Filed as**: [coreai-microsoft/embr#756](https://github.com/coreai-microsoft/embr/issues/756).
 - **Open questions** (for follow-up Phase 5 investigation):
   - ~~Does the preview env share `GITHUB_TOKEN`, `GITHUB_WEBHOOK_SECRET`, and `DATABASE_URL` from the parent `production` env?~~ **Answered (see G-011): NO. Preview envs do NOT inherit env vars from the parent.** Good for security, brutal for usability.
   - When does the preview env get torn down? On PR close, on PR merge, or after a TTL? **Partial answer (see G-010)**: at least on merge, possibly tied to branch deletion, but the cleanup races with stray deploy events.
@@ -138,7 +138,7 @@ Each gap should capture:
   1. When a preview env is being torn down (PR close/merge), drain or cancel any in-flight or queued deploy events targeting that env BEFORE deleting it.
   2. If a deploy event arrives for a deleted env, suppress the GitHub PR comment entirely (or at most, post an info-level "preview env already torn down" rather than a red ❌).
   3. The bot's "Failed" comment template should distinguish *production* failures (alarming, real, actionable) from *preview* failures (often noise) — different colors, different language, possibly only post the latter when the PR is still open.
-- **Filed as**: TBD (Phase 5).
+- **Filed as**: [coreai-microsoft/embr#757](https://github.com/coreai-microsoft/embr/issues/757).
 
 ### G-011 · PR previews don't see env-scoped variables, even though Embr's "preview from production" mental model implies they should
 
@@ -211,7 +211,7 @@ Each gap should capture:
   2. Auto-grant the identity **read access on the app's own App Insights** resource (we already provision App Insights per app).
   3. Document the pattern (`@azure/identity` `DefaultAzureCredential`) in the docs site so apps can call any AAD-protected Azure API as themselves.
   4. Extension: let `embr.yaml` declare additional resource-scope grants (e.g. "this app can read Cosmos account X") that Embr fulfills via role assignment.
-- **Filed as**: _(ready to file — see [Phase 5 filing list](#phase-5-filing-list) below.)_
+- **Filed as**: comment on existing [coreai-microsoft/embr#726](https://github.com/coreai-microsoft/embr/issues/726) (Runtime workload identity / federated MSI).
 
 ### G-015 · React Server Action failures return opaque digest-only 500s with no way for the app developer to see the actual error
 
@@ -235,16 +235,32 @@ Each gap should capture:
 
 ## Phase 5 filing list
 
-Filed (4):
+All 15 gaps are now lodged upstream against `coreai-microsoft/embr`. 11 went in as new issues, 4 went in as comments on existing tracking issues to avoid duplication.
+
+### New issues filed (11)
 
 | ID  | Issue | Severity |
 |-----|-------|----------|
+| G-003 | [coreai-microsoft/embr#758](https://github.com/coreai-microsoft/embr/issues/758) — Programmatic deployment lifecycle webhook | MED |
+| G-004 | [coreai-microsoft/embr#760](https://github.com/coreai-microsoft/embr/issues/760) — Reference sample: 'agent-managed app' template | LOW |
+| G-005 | [coreai-microsoft/embr#759](https://github.com/coreai-microsoft/embr/issues/759) — Documented 'agent identity' pattern | HIGH |
+| G-006 | [coreai-microsoft/embr#754](https://github.com/coreai-microsoft/embr/issues/754) — Transient `database_provision` failures with no auto-retry | MED |
+| G-008 | [coreai-microsoft/embr#755](https://github.com/coreai-microsoft/embr/issues/755) — `embr dbs connect` doesn't inject `DATABASE_URL` | MED |
+| G-009 | [coreai-microsoft/embr#756](https://github.com/coreai-microsoft/embr/issues/756) — PR preview environments undocumented | MED |
+| G-010 | [coreai-microsoft/embr#757](https://github.com/coreai-microsoft/embr/issues/757) — Alarming "❌ Failed" comment on merged PR after preview cleanup | MED |
 | G-011 | [coreai-microsoft/embr#746](https://github.com/coreai-microsoft/embr/issues/746) — PR previews don't see env-scoped variables | HIGH |
 | G-012 | [coreai-microsoft/embr#745](https://github.com/coreai-microsoft/embr/issues/745) — `activeDeploymentId` can pin to a stale deploy | HIGH |
 | G-013 | [coreai-microsoft/embr#744](https://github.com/coreai-microsoft/embr/issues/744) — chunk hangs prevent React hydration | HIGH |
 | G-015 | [coreai-microsoft/embr#750](https://github.com/coreai-microsoft/embr/issues/750) — opaque digest-only Server Action 500s | HIGH |
 
-Ready to file (11): G-001, G-002, G-003, G-004, G-005, G-006, G-007, G-008, G-009, G-010, G-014. Each entry above has the receipt, workaround, impact, and proposed primitive — they're filing-ready as written.
+### Added as comments on existing issues (4)
+
+| ID  | Existing issue | Severity |
+|-----|----------------|----------|
+| G-001 | [coreai-microsoft/embr#682](https://github.com/coreai-microsoft/embr/issues/682) — Workloads: Multiple workload types per environment (covers cron / background jobs) | MED |
+| G-002 | [coreai-microsoft/embr#726](https://github.com/coreai-microsoft/embr/issues/726) — Runtime workload identity / federated MSI | HIGH |
+| G-007 | [coreai-microsoft/embr#692](https://github.com/coreai-microsoft/embr/issues/692) — Allow management of external databases | MED |
+| G-014 | [coreai-microsoft/embr#726](https://github.com/coreai-microsoft/embr/issues/726) — Runtime workload identity (App Insights flavor — combined with G-002 in the comment) | HIGH |
 
 When we file each:
 1. `gh issue create -R coreai-microsoft/embr -t "<title>" -F <body-file>`
