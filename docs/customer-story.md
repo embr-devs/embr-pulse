@@ -31,6 +31,22 @@ What happened next, **with no human writing code**:
 
 Roughly **25 minutes from "I have an idea" to "it's in production"**, with the human's only contributions being the original sentence and a code review.
 
+## A second receipt: the platform fixed itself
+
+On 2026-04-30 we deliberately injected a low-grade reliability problem into the production app — ~30% of feedback submissions started failing their Foundry triage step (a realistic stand-in for "Foundry had a bad five minutes"). No human watched. The monitor agent's GitHub Actions cron fired on its next tick.
+
+| t+ | Event | Where |
+|---|---|---|
+| 0s | Triage-failure breadcrumbs land in `system_events` (real, not synthetic-flagged) | Postgres on Embr |
+| ~5 min | GH Actions cron pings `POST /api/agents/monitor/run` | embr-pulse on Embr |
+| ~6 s | Monitor agent (Foundry) reads the signal pack, decides `incidentDetected: true`, severity `warning`, confidence 0.91 | Foundry, called from Embr |
+| ~7 s | Incident issue [#139](https://github.com/seligj95/embr-pulse/issues/139) opened with hypothesis + suggested action | repo |
+| next tick | Monitor re-runs, sees the same window, **dedupes onto #139** instead of filing a duplicate | embr-pulse on Embr |
+
+The Foundry agent's hypothesis literally read: *"The app is experiencing repeated triage failures caused by a simulated outage path in the Foundry triage call."* It read the breadcrumb messages and identified the simulation pattern in its own reasoning. We also verified the agent's **conservatism**: when the same volume of failures was tagged `synthetic_failure_injected`, the agent (correctly) declined to file an incident, citing the synthetic flag.
+
+This is Loop 3 working: the platform notices its own bad days, files actionable incident issues, and won't page humans for synthetic noise.
+
 ## Why this matters
 
 There are two stories about agentic software, and they're often confused:

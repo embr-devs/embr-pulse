@@ -2,12 +2,13 @@
 
 | Field | Value |
 |-------|-------|
-| **Date** | 2026-04-28 |
+| **Date** | 2026-04-28 (last updated 2026-04-30) |
 | **Author** | Jordan Selig |
-| **Status** | Approved |
+| **Status** | Approved · **Phases 0–4 shipped on production** |
 | **Tracking issue** | [coreai-microsoft/embr#374](https://github.com/coreai-microsoft/embr/issues/374) |
 | **Repo** | `seligj95/embr-pulse` |
 | **Milestone** | FY26Q4-W05 |
+| **Receipts** | Loop 2: [issue #8 → PR #9](https://github.com/seligj95/embr-pulse/pull/9) · Loop 3: [incident #139](https://github.com/seligj95/embr-pulse/issues/139) |
 
 ---
 

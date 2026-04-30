@@ -2,7 +2,7 @@
 
 Living document. Designed to be the canonical happy-path demo we engineer toward. Every change to the architecture should be checked against this script.
 
-> Status: **Draft — pre-implementation.** Concrete timings, screenshots, and recordings will be added as phases land.
+> Status: **Live.** Loops 1–3 are operational on production. Timings below are from real measurements; receipts are linked inline.
 
 ---
 
@@ -54,16 +54,17 @@ Living document. Designed to be the canonical happy-path demo we engineer toward
 
 | Step | Actor | Action | Visible UI / Signal | Expected timing |
 |------|-------|--------|---------------------|-----------------|
-| 1 | Demo human | Toggle `EMBR_PULSE_SIMULATE_FAILURE=true` via Embr env var | (no immediate UI) | Instant |
-| 2 | App | Start returning 500 for 1% of `/api/feedback` requests | App Insights 5xx-rate climbs | 1–2 min for signal to register |
-| 3 | Demo human | Manually trigger monitor (or wait for cron) | n/a | Manual: instant |
-| 4 | Monitor agent (Foundry) | Query App Insights, detect 5xx breach, package signal + recent deploys + sample traces, generate root-cause hypothesis | `incidents` row appears in admin | < 30 s |
-| 5 | App | Create GitHub incident issue with sanitized payload | Issue link on incident row | < 3 s |
-| 6 | Copilot coding agent | (Optional, narrate as "next step") Propose fix PR — typically a revert or flag-flip | PR link on incident row | 1–5 min ⚠️ |
-| 7 | Demo human | Disable simulate-failure flag manually for time | 5xx rate drops | < 1 min |
-| 8 | Monitor agent | Detect SLO recovered; resolve incident | Status `resolved`; `resolved_at` set | next cycle |
+| 1 | Demo human | Toggle `EMBR_PULSE_SIMULATE_TRIAGE_FAILURE=true` via `embr variables set` (records non-synthetic `triage_failed` events the agent treats as a real signal) | (no immediate UI) | Instant |
+| 2 | App | ~30% of `/api/feedback` submissions skip the Foundry triage call and write `triage_failed` system_events rows | Failure breadcrumbs accumulate in Postgres | 1 min for grace window |
+| 3 | Demo human | Manually trigger monitor with a `curl` to `/api/agents/monitor/run` (shows `embr-pulse-monitor` cron behavior on demand instead of waiting up to 5 min) | n/a | Manual: instant |
+| 4 | Monitor agent (Foundry) | Read signal pack from Postgres, decide `incidentDetected: true`, severity `warning`, confidence ≥ 0.9 | JSON response shows incident decision | < 10 s |
+| 5 | App | Create `[INCIDENT]` GitHub issue with sanitized payload + agent hypothesis + suggested action | Issue link in response; visible in repo | < 3 s |
+| 6 | Demo human | Re-trigger monitor with the same window | Response shows `dedupedOnto: <issue#>`, no duplicate filed | < 10 s |
+| 7 | Demo human | Toggle `EMBR_PULSE_SIMULATE_TRIAGE_FAILURE=false`; (optional) flip `EMBR_PULSE_SIMULATE_FAILURE=true` to show conservatism | Next monitor run sees `syntheticFailureFlagOn: true` and declines to file | < 10 s |
 
-For demo brevity: skip step 6's full Copilot run; show the issue body and the proposed-fix template, then play a 30-second clip from a previous run.
+**Receipt for this exact path**: [incident #139](https://github.com/seligj95/embr-pulse/issues/139), filed 2026-04-30, severity `warning`, confidence 0.91. Re-triggered same window: dedupedOnto #139, no duplicate.
+
+For demo brevity: skip Loop 1 fix-PR generation here; the signal we want to land is "the platform noticed and filed actionable work without a human." Mention that Copilot picking up the incident issue and proposing a revert is the natural next step (and how Loop 1 chains in).
 
 ---
 

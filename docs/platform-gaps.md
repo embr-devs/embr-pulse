@@ -2,9 +2,9 @@
 
 Captured during `embr-pulse` development. Each entry is friction we hit while building an agent-managed app on Embr that the platform should arguably handle natively.
 
-This file is mined in **Phase 5** of the [design](./design.md) to file ≥3 GitHub issues against `coreai-microsoft/embr` (issues only — we don't push code there).
+This file is mined in **Phase 5** of the [design](./design.md) to file GitHub issues against `coreai-microsoft/embr` (issues only — we don't push code there).
 
-> Status: **Pre-implementation.** Pre-seeded with gaps the design phase already anticipated. Will grow as we build.
+> Status: **All four phases shipped.** Loops 1–3 are operational on production. This file is now a steady-state list of platform improvements with concrete receipts behind each one. Currently 15 entries (G-001 → G-015); 4 filed (#744, #745, #746, #750), 11 ready to file.
 
 ---
 
@@ -211,7 +211,7 @@ Each gap should capture:
   2. Auto-grant the identity **read access on the app's own App Insights** resource (we already provision App Insights per app).
   3. Document the pattern (`@azure/identity` `DefaultAzureCredential`) in the docs site so apps can call any AAD-protected Azure API as themselves.
   4. Extension: let `embr.yaml` declare additional resource-scope grants (e.g. "this app can read Cosmos account X") that Embr fulfills via role assignment.
-- **Filed as**: _(pending Phase 5 — this gap is concrete now that we hit it; will file with code links to `lib/signals.ts` once we have the signal seam shipped.)_
+- **Filed as**: _(ready to file — see [Phase 5 filing list](#phase-5-filing-list) below.)_
 
 ### G-015 · React Server Action failures return opaque digest-only 500s with no way for the app developer to see the actual error
 
@@ -233,8 +233,21 @@ Each gap should capture:
 
 ---
 
-When we hit Phase 5, we'll:
-2. Group duplicates and combine with anything new.
-3. Pick the top 3+ HIGH/MED-impact gaps.
-4. File one GitHub issue against `coreai-microsoft/embr` per gap, linking back to the relevant section of `embr-pulse` (private repo — link to specific file:line snapshots in the issue body).
-5. Update the **Filed as** column above.
+## Phase 5 filing list
+
+Filed (4):
+
+| ID  | Issue | Severity |
+|-----|-------|----------|
+| G-011 | [coreai-microsoft/embr#746](https://github.com/coreai-microsoft/embr/issues/746) — PR previews don't see env-scoped variables | HIGH |
+| G-012 | [coreai-microsoft/embr#745](https://github.com/coreai-microsoft/embr/issues/745) — `activeDeploymentId` can pin to a stale deploy | HIGH |
+| G-013 | [coreai-microsoft/embr#744](https://github.com/coreai-microsoft/embr/issues/744) — chunk hangs prevent React hydration | HIGH |
+| G-015 | [coreai-microsoft/embr#750](https://github.com/coreai-microsoft/embr/issues/750) — opaque digest-only Server Action 500s | HIGH |
+
+Ready to file (11): G-001, G-002, G-003, G-004, G-005, G-006, G-007, G-008, G-009, G-010, G-014. Each entry above has the receipt, workaround, impact, and proposed primitive — they're filing-ready as written.
+
+When we file each:
+1. `gh issue create -R coreai-microsoft/embr -t "<title>" -F <body-file>`
+2. Update **Filed as** in the entry above.
+3. Cross-reference the issue from the relevant code in `embr-pulse` (e.g. add `// see coreai-microsoft/embr#NNN` near the workaround code).
+

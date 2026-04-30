@@ -47,7 +47,7 @@ All three loops compose. Copilot doesn't know which loop spawned an issue — it
 | GitHub issue | Repo `seligj95/embr-pulse` | Source of truth; Copilot's input |
 | Coding agent | GitHub Copilot | Reads issue + repo, opens PR |
 | GitHub App webhook | Embr platform | On merge → build → deploy |
-| Monitor agent (Phase 4) | Foundry, scheduled via GH Actions cron | Watch App Insights SLOs, open incident issues |
+| Monitor agent | Foundry (`gpt-5.4-mini-1` deployment), scheduled via GH Actions cron every 5 min | Read signal pack from app Postgres (G-014 means we can't read App Insights yet), open `[INCIDENT]` issues with hypothesis + dedupe |
 | Telemetry | App Insights via OpenTelemetry | Structured logs from app, traces from Foundry |
 
 ## Loop 2: the path of one feedback item
@@ -62,6 +62,18 @@ Concrete trace from issue #8 → PR #9 (merged in under 10 minutes, no human cod
 6. **Copilot opens a PR** — typically within 1–5 minutes.
 7. **Human merges.** Embr's GitHub App auto-builds and auto-deploys.
 8. **(Future)** App polls Embr deployment status; once the new SHA is live, marks the feedback item `shipped` and notifies the submitter.
+
+## Loop 3: the path of one incident
+
+Concrete trace from a 2026-04-30 synthetic-incident exercise that filed [issue #139](https://github.com/seligj95/embr-pulse/issues/139):
+
+1. **Failure breadcrumbs accumulate.** `app/api/feedback/route.ts` records `triage_failed` rows in `system_events` whenever the Foundry triage call throws. A 1-minute grace window in the signal-pack SQL avoids racing in-flight triages.
+2. **GH Actions cron** (`.github/workflows/monitor.yml`) hits `POST /api/agents/monitor/run` every 5 min with a bearer token (`MONITOR_TRIGGER_SECRET`). The cron lives off-platform only because Embr has no `jobs:` primitive yet (G-001).
+3. **Signal pack assembly** (`lib/signals.ts`) — counts feedback / triage failures / synthetic-injection events / open incidents / recent deploys, all from the app's own Postgres. Returns a fixed-shape `SignalPack` object.
+4. **Monitor agent call** (`lib/monitor.ts`) — calls Foundry's chat-completions endpoint for the `gpt-5.4-mini-1` model deployment with the signal pack as user content and the incident-triage prompt as system content. Strict JSON-only response shape; mismatches fail closed (`incidentDetected: false`).
+5. **Conservatism check.** The signal pack includes `syntheticFailureFlagOn: true|false`. The agent prompt instructs it to discount obviously synthetic signals. Verified: when only `EMBR_PULSE_SIMULATE_FAILURE` is on (synthetic 500s), the agent declines to file. When `EMBR_PULSE_SIMULATE_TRIAGE_FAILURE` is on (real-looking `triage_failed` events), the agent files.
+6. **Dedupe.** Before filing, `lib/github.ts` checks for an open `[INCIDENT]` issue tagged with the current dedupe key; if one exists, returns `dedupedOnto: <issue#>` instead of filing a duplicate. Verified: re-triggering the monitor on the same window deduped onto #139, no second issue.
+7. **Issue body.** Hypothesis + suggested action + signal-pack summary, with labels `incident` and `severity-{info|warning|critical}`. Same Copilot-routing rules as Loop 2 then apply if confidence ≥ 0.7.
 
 ## Trust boundary
 
@@ -88,7 +100,7 @@ Today: long-lived secrets in Embr environment variables.
 | App | Foundry | Static API key on the OpenAI-compatible endpoint |
 | App | App Insights | Connection string |
 | Foundry agent | (read-only; no outbound) | n/a |
-| Monitor agent (future) | Kusto, App Insights | Foundry-managed identity (planned) |
+| Monitor agent | App's own Postgres signal pack (G-014 blocks App Insights reads for now) | Static Foundry API key today; Embr workload identity is the planned end-state |
 
 We deliberately documented this as a **gap** (G-002, G-005). A first-class story needs Embr-issued workload identity. Until then: rotate via Foundry portal → Embr Variables UI; saving triggers a redeploy.
 

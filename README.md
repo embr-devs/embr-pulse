@@ -10,6 +10,11 @@ A real internal app the Embr team uses to give feedback. Each submission becomes
 
 The app's purpose is the agent loop. Building it surfaces what Embr needs to make this experience first-class for customers.
 
+> **Status:** All three loops are operational. Receipts:
+> - Loop 1 (code): every PR in this repo merged via Copilot is a Loop 1 receipt.
+> - Loop 2 (feedback → ship): [issue #8 → PR #9 in ~25 minutes](docs/customer-story.md).
+> - Loop 3 (self-heal): [incident #139](https://github.com/seligj95/embr-pulse/issues/139) — Foundry monitor agent detected a synthetic triage-failure spike, filed a real incident issue with hypothesis + suggested action, and deduplicated subsequent triggers onto the same issue.
+
 ## Docs
 
 **Evangelism:**
