@@ -14,7 +14,7 @@
 import { NextResponse } from "next/server";
 import { randomUUID, timingSafeEqual } from "node:crypto";
 import { assembleSignalPack, recordSystemEvent } from "@/lib/signals";
-import { analyzeSignals } from "@/lib/monitor";
+import { analyzeSignals, getLastAnalyzeFailureReason } from "@/lib/monitor";
 import { createIncidentIssue } from "@/lib/incidents";
 import { log } from "@/lib/log";
 
@@ -103,6 +103,7 @@ export async function POST(req: Request) {
       runId,
       ok: true,
       analyzed: result !== null,
+      analyzeFailureReason: result === null ? getLastAnalyzeFailureReason() : null,
       incidentDetected: result?.incidentDetected ?? false,
       severity: result?.severity ?? null,
       confidence: result?.confidence ?? null,

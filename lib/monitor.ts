@@ -138,13 +138,29 @@ function clamp(s: string, max: number): string {
  * @param timeoutMs Hard deadline for the upstream call. Default 20s.
  * @param runId Correlation id (the system_events row id for this monitor run).
  */
+/**
+ * Container for analyze diagnostics surfaced to the monitor route. Always
+ * non-null so the caller can distinguish "agent ran, no incident" from
+ * "agent never ran". Used in route response/logging only — internal callers
+ * should keep using the existing analyzeSignals().
+ */
+let lastAnalyzeFailureReason: string | null = null;
+export function getLastAnalyzeFailureReason(): string | null {
+  return lastAnalyzeFailureReason;
+}
+function setReason(r: string | null) {
+  lastAnalyzeFailureReason = r;
+}
+
 export async function analyzeSignals(
   signalPack: SignalPack,
   timeoutMs = 20_000,
   runId?: string,
 ): Promise<MonitorResult | null> {
+  setReason(null);
   const cfg = getConfig();
   if (!cfg) {
+    setReason("foundry_not_configured");
     log.info("monitor.skipped", { runId, reason: "foundry_not_configured" });
     return null;
   }
@@ -185,6 +201,7 @@ export async function analyzeSignals(
 
     if (!res.ok) {
       const text = await res.text().catch(() => "");
+      setReason(`http_${res.status}:${text.slice(0, 200)}`);
       log.error("monitor.http_error", {
         runId,
         status: res.status,
@@ -200,6 +217,7 @@ export async function analyzeSignals(
     };
     const content = json.choices?.[0]?.message?.content;
     if (!content) {
+      setReason("no_content");
       log.error("monitor.no_content", { runId, elapsedMs: Date.now() - startedAt });
       return null;
     }
@@ -208,6 +226,7 @@ export async function analyzeSignals(
     try {
       parsed = JSON.parse(content);
     } catch (err) {
+      setReason(`parse_failed:${(err as Error).message}`);
       log.error("monitor.parse_failed", {
         runId,
         elapsedMs: Date.now() - startedAt,
@@ -217,6 +236,7 @@ export async function analyzeSignals(
     }
 
     if (!isMonitorResult(parsed)) {
+      setReason(`shape_mismatch:${content.slice(0, 200)}`);
       log.error("monitor.shape_mismatch", {
         runId,
         elapsedMs: Date.now() - startedAt,
@@ -240,8 +260,10 @@ export async function analyzeSignals(
     return result;
   } catch (err) {
     if ((err as { name?: string }).name === "AbortError") {
+      setReason(`timeout:${timeoutMs}ms`);
       log.error("monitor.timeout", { runId, elapsedMs: Date.now() - startedAt, timeoutMs });
     } else {
+      setReason(`threw:${(err as Error).message}`);
       log.error("monitor.threw", {
         runId,
         elapsedMs: Date.now() - startedAt,
