@@ -8,10 +8,10 @@ const BODY_MAX = 4000;
 const inputStyle: React.CSSProperties = {
   width: "100%",
   padding: "0.65rem 0.8rem",
-  background: "#11141a",
-  border: "1px solid #2a2f36",
+  background: "var(--color-card)",
+  border: "1px solid var(--color-card-border)",
   borderRadius: 8,
-  color: "#e6e8eb",
+  color: "var(--color-text)",
   fontSize: "0.95rem",
   fontFamily: "inherit",
   boxSizing: "border-box",
@@ -21,7 +21,7 @@ const labelStyle: React.CSSProperties = {
   display: "block",
   marginBottom: "0.35rem",
   fontSize: "0.85rem",
-  color: "#b6bcc6",
+  color: "var(--color-muted)",
 };
 
 const errStyle: React.CSSProperties = {
@@ -195,7 +195,7 @@ export function FeedbackForm() {
             fontSize: "0.78rem",
             textAlign: "right",
             marginTop: "0.25rem",
-            color: bodyLength >= BODY_MAX * 0.9 ? "#f87171" : "#8a93a0",
+            color: bodyLength >= BODY_MAX * 0.9 ? "#f87171" : "var(--color-muted)",
           }}
         >
           {bodyLength} / {BODY_MAX}
@@ -208,8 +208,8 @@ export function FeedbackForm() {
         disabled={pending}
         style={{
           padding: "0.7rem 1rem",
-          background: pending ? "#2a2f36" : "#7aa2ff",
-          color: pending ? "#8a93a0" : "#0b0d10",
+          background: pending ? "var(--color-card-border)" : "var(--color-accent)",
+          color: pending ? "var(--color-muted)" : "var(--color-bg)",
           fontWeight: 600,
           border: "none",
           borderRadius: 8,
