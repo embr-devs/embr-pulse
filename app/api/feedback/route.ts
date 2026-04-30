@@ -34,6 +34,19 @@ function maybeInjectSyntheticFailure(): boolean {
   return Math.random() < 0.2;
 }
 
+/**
+ * Triage-failure injection for the Loop 3 incident-creation demo path.
+ * Toggled by EMBR_PULSE_SIMULATE_TRIAGE_FAILURE. Unlike the synthetic
+ * 500 injector, this records a non-synthetic "triage_failed" system_events
+ * row that looks identical to a real Foundry outage — the monitor agent
+ * sees it as a genuine signal (totalSystemErrors > 0, triageFailureCount
+ * climbs) and should file an incident issue.
+ */
+function maybeInjectTriageFailure(): boolean {
+  if (process.env.EMBR_PULSE_SIMULATE_TRIAGE_FAILURE !== "true") return false;
+  return Math.random() < 0.3;
+}
+
 export async function GET(req: Request) {
   const url = new URL(req.url);
   const limit = Math.min(Number(url.searchParams.get("limit") ?? 50), 200);
@@ -96,44 +109,58 @@ export async function POST(req: Request) {
   // open/closed issues that already have a github_issue_number to give the
   // model a small dedupe window.
   let triage = null;
+  const triageInjectFailure = maybeInjectTriageFailure();
   try {
-    const recentRes = await pool.query<{ github_issue_number: number; title: string; status: string }>(
-      `SELECT github_issue_number, title, status FROM feedback
-        WHERE github_issue_number IS NOT NULL
-        ORDER BY created_at DESC
-        LIMIT 10`,
-    );
-    triage = await triageFeedback(
-      {
-        title: row.title,
-        body: row.body,
-        category: row.category,
-        submitterName: row.submitterName,
-        recentIssues: recentRes.rows.map((r) => ({
-          number: r.github_issue_number,
-          title: r.title,
-          state: r.status === "shipped" || r.status === "declined" ? "closed" : "open",
-        })),
-      },
-      15_000,
-      row.id,
-    );
-    if (triage) {
-      await pool.query(
-        `UPDATE feedback
-           SET triage_summary = $2, triage_confidence = $3, updated_at = now()
-         WHERE id = $1`,
-        [row.id, triage.summary, triage.confidence],
+    if (triageInjectFailure) {
+      // Simulated genuine triage failure (e.g., Foundry outage). We deliberately
+      // do NOT tag this as synthetic so the monitor agent treats it as a real
+      // signal in its incident reasoning. Record the breadcrumb the way real
+      // failures would, then skip the Foundry call.
+      await recordSystemEvent("triage_failed", {
+        feedbackId: row.id,
+        reason: "simulated_outage",
+        message: "Foundry triage call failed (simulated outage for Loop 3 demo)",
+      });
+      log.warn("feedback.triage_simulated_failure", { feedbackId: row.id });
+    } else {
+      const recentRes = await pool.query<{ github_issue_number: number; title: string; status: string }>(
+        `SELECT github_issue_number, title, status FROM feedback
+          WHERE github_issue_number IS NOT NULL
+          ORDER BY created_at DESC
+          LIMIT 10`,
       );
-      await pool.query(
-        `INSERT INTO feedback_events (feedback_id, type, source, payload_json)
-         VALUES ($1, 'triaged', 'foundry', $2::jsonb)`,
-        [row.id, JSON.stringify({
-          confidence: triage.confidence,
-          labels: triage.suggestedLabels,
-          dedupeOf: triage.dedupeOfIssueNumber,
-        })],
+      triage = await triageFeedback(
+        {
+          title: row.title,
+          body: row.body,
+          category: row.category,
+          submitterName: row.submitterName,
+          recentIssues: recentRes.rows.map((r) => ({
+            number: r.github_issue_number,
+            title: r.title,
+            state: r.status === "shipped" || r.status === "declined" ? "closed" : "open",
+          })),
+        },
+        15_000,
+        row.id,
       );
+      if (triage) {
+        await pool.query(
+          `UPDATE feedback
+             SET triage_summary = $2, triage_confidence = $3, updated_at = now()
+           WHERE id = $1`,
+          [row.id, triage.summary, triage.confidence],
+        );
+        await pool.query(
+          `INSERT INTO feedback_events (feedback_id, type, source, payload_json)
+           VALUES ($1, 'triaged', 'foundry', $2::jsonb)`,
+          [row.id, JSON.stringify({
+            confidence: triage.confidence,
+            labels: triage.suggestedLabels,
+            dedupeOf: triage.dedupeOfIssueNumber,
+          })],
+        );
+      }
     }
   } catch (err) {
     log.error("feedback.triage_orchestration_failed", {
