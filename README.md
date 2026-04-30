@@ -12,6 +12,12 @@ The app's purpose is the agent loop. Building it surfaces what Embr needs to mak
 
 ## Docs
 
+**Evangelism:**
+- [`docs/customer-story.md`](docs/customer-story.md) — narrative pitch with real receipts (issue #8 → PR #9 in ~25 minutes)
+- [`docs/reference-architecture.md`](docs/reference-architecture.md) — what we built, distilled for customers who want to copy it
+- [`docs/embed-in-embr.md`](docs/embed-in-embr.md) — what Embr should ship to make this first-class
+
+**Engineering:**
 - [`docs/design.md`](docs/design.md) — full architecture and rationale
 - [`docs/demo-script.md`](docs/demo-script.md) — canonical happy-path demo we engineer toward
 - [`docs/platform-gaps.md`](docs/platform-gaps.md) — running log of Embr platform improvements we'd like to see
