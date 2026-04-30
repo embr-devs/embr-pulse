@@ -1,7 +1,7 @@
 "use client";
 
-import { useActionState, useState } from "react";
-import { submitFeedbackAction, type SubmitFeedbackResult } from "./actions";
+import { useState } from "react";
+import { useRouter } from "next/navigation";
 
 const BODY_MAX = 4000;
 
@@ -30,20 +30,91 @@ const errStyle: React.CSSProperties = {
   marginTop: "0.3rem",
 };
 
-export function FeedbackForm() {
-  const [state, formAction, pending] = useActionState<
-    SubmitFeedbackResult | null,
-    FormData
-  >(submitFeedbackAction, null);
-  const [bodyLength, setBodyLength] = useState(0);
+type FieldErrors = Record<string, string[] | undefined>;
 
-  const errs =
-    state && !state.ok
-      ? state.fieldErrors
-      : ({} as Record<string, string[] | undefined>);
+export function FeedbackForm() {
+  const router = useRouter();
+  const [pending, setPending] = useState(false);
+  const [bodyLength, setBodyLength] = useState(0);
+  const [errs, setErrs] = useState<FieldErrors>({});
+  const [topError, setTopError] = useState<string | null>(null);
+
+  async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    if (pending) return;
+    setPending(true);
+    setErrs({});
+    setTopError(null);
+
+    const formEl = e.currentTarget;
+    const fd = new FormData(formEl);
+    const payload = {
+      submitterName: String(fd.get("submitterName") ?? "").trim(),
+      submitterEmail: String(fd.get("submitterEmail") ?? "").trim(),
+      title: String(fd.get("title") ?? "").trim(),
+      body: String(fd.get("body") ?? "").trim(),
+      category: (fd.get("category") || null) as
+        | "bug"
+        | "feature"
+        | "question"
+        | "other"
+        | null,
+    };
+
+    try {
+      const res = await fetch("/api/feedback", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+
+      if (res.status === 201) {
+        router.push("/?submitted=1");
+        router.refresh();
+        return;
+      }
+
+      // 400 with field errors
+      if (res.status === 400) {
+        const data = (await res.json().catch(() => ({}))) as {
+          fieldErrors?: FieldErrors;
+          error?: string;
+        };
+        if (data.fieldErrors) setErrs(data.fieldErrors);
+        else setTopError(data.error ?? "Validation failed");
+        return;
+      }
+
+      const data = (await res.json().catch(() => ({}))) as { error?: string };
+      setTopError(data.error ?? `Submission failed (HTTP ${res.status}).`);
+    } catch (err) {
+      setTopError(
+        err instanceof Error
+          ? err.message
+          : "Network error — please try again.",
+      );
+    } finally {
+      setPending(false);
+    }
+  }
 
   return (
-    <form action={formAction} style={{ display: "grid", gap: "1rem" }}>
+    <form onSubmit={onSubmit} style={{ display: "grid", gap: "1rem" }}>
+      {topError && (
+        <div
+          style={{
+            padding: "0.65rem 0.85rem",
+            background: "rgba(248,113,113,0.1)",
+            border: "1px solid rgba(248,113,113,0.4)",
+            borderRadius: 8,
+            color: "#f87171",
+            fontSize: "0.85rem",
+          }}
+        >
+          {topError}
+        </div>
+      )}
+
       <div>
         <label htmlFor="submitterName" style={labelStyle}>
           Your name
