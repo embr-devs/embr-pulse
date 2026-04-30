@@ -1,5 +1,9 @@
 # embr-pulse
 
+> **📍 Team-shared reference copy.** Live deployment, end-to-end agent receipts (the Copilot-authored PRs, [issue #8 → PR #9](https://github.com/seligj95/embr-pulse/pull/9), [incident #139](https://github.com/seligj95/embr-pulse/issues/139)), and active development happen at [seligj95/embr-pulse](https://github.com/seligj95/embr-pulse). This repo mirrors the source + docs so anyone in `embr-devs` can read, fork, or adapt without dependency on a personal account. Workflows here are inert (renamed to `.yml.example`) — there's no live cron, no live monitor.
+
+---
+
 > Team feedback aggregator hosted on [Embr](https://github.com/coreai-microsoft/embr) — every part of its lifecycle (development, deployment, monitoring, fixes) is driven by agents.
 >
 > Reference architecture for [coreai-microsoft/embr#374](https://github.com/coreai-microsoft/embr/issues/374).
